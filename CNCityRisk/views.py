@@ -1,110 +1,51 @@
-from flask import render_template, request, url_for, redirect, flash
+from flask import render_template, request, url_for, redirect, flash, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 
-from CNCityRisk import app, db
-from CNCityRisk.models import User, Movie
+from CNCityRisk import app
+from CNCityRisk import models
+
+# from CNCityRisk import db
+# from CNCityRisk.models import User, Movie
 
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+
+    provinces = list(models.Province_City_District.keys())
     if request.method == 'POST':
-        if not current_user.is_authenticated:
-            return redirect(url_for('index'))
-
-        title = request.form['title']
-        year = request.form['year']
-
-        if not title or not year or len(year) != 4 or len(title) > 60:
-            flash('Invalid input.')
-            return redirect(url_for('index'))
-
-        movie = Movie(title=title, year=year)
-        db.session.add(movie)
-        db.session.commit()
-        flash('Item created.')
-        return redirect(url_for('index'))
-
-    movies = Movie.query.all()
-    return render_template('index.html', movies=movies)
+        current_province = request.form['province']
+        cities = list(models.Province_City_District[current_province].keys())
+        current_city = request.form['city']
+        districts = list(models.Province_City_District[current_province][current_city])
+        current_district = request.form['district']
+    else:
+        current_province = provinces[0]
+        cities = list(models.Province_City_District[current_province].keys())
+        current_city = cities[0]
+        districts = list(models.Province_City_District[current_province][current_city])
+        current_district = districts[0]
+    
+    return render_template('index.html', 
+            provinces=provinces, current_province=current_province,
+            cities=cities, current_city=current_city, 
+            districts=districts, current_district=current_district)
 
 
-@app.route('/movie/edit/<int:movie_id>', methods=['GET', 'POST'])
-@login_required
-def edit(movie_id):
-    movie = Movie.query.get_or_404(movie_id)
-
-    if request.method == 'POST':
-        title = request.form['title']
-        year = request.form['year']
-
-        if not title or not year or len(year) != 4 or len(title) > 60:
-            flash('Invalid input.')
-            return redirect(url_for('edit', movie_id=movie_id))
-
-        movie.title = title
-        movie.year = year
-        db.session.commit()
-        flash('Item updated.')
-        return redirect(url_for('index'))
-
-    return render_template('edit.html', movie=movie)
+@app.route('/get_city_list')
+def get_city_list():
+    province = request.args.get('province', '')
+    
+    cities = list(models.Province_City_District[province].keys())
+    
+    return jsonify({'cities': cities})
 
 
-@app.route('/movie/delete/<int:movie_id>', methods=['POST'])
-@login_required
-def delete(movie_id):
-    movie = Movie.query.get_or_404(movie_id)
-    db.session.delete(movie)
-    db.session.commit()
-    flash('Item deleted.')
-    return redirect(url_for('index'))
+@app.route('/get_district_list')
+def get_district_list():
+    province = request.args.get('province', '')
+    city = request.args.get('city', '')
+    
+    districts = list(models.Province_City_District[province][city])
 
+    return jsonify({'districts': districts})
 
-@app.route('/settings', methods=['GET', 'POST'])
-@login_required
-def settings():
-    if request.method == 'POST':
-        name = request.form['name']
-
-        if not name or len(name) > 20:
-            flash('Invalid input.')
-            return redirect(url_for('settings'))
-
-        user = User.query.first()
-        user.name = name
-        db.session.commit()
-        flash('Settings updated.')
-        return redirect(url_for('index'))
-
-    return render_template('settings.html')
-
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        if not username or not password:
-            flash('Invalid input.')
-            return redirect(url_for('login'))
-
-        user = User.query.first()
-
-        if username == user.username and user.validate_password(password):
-            login_user(user)
-            flash('Login success.')
-            return redirect(url_for('index'))
-
-        flash('Invalid username or password.')
-        return redirect(url_for('login'))
-
-    return render_template('login.html')
-
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    flash('Goodbye.')
-    return redirect(url_for('index'))

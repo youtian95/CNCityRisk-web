@@ -1,28 +1,49 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<p>{{ movies|length }} Titles</p>
-{% if current_user.is_authenticated %}
-<form method="post">
-    Name <input type="text" name="title" autocomplete="off" required>
-    Year <input type="text" name="year" autocomplete="off" required>
-    <input class="btn" type="submit" name="submit" value="Add">
-</form>
-{% endif %}
-<ul class="movie-list">
-    {% for movie in movies %}
-    <li>{{ movie.title }} - {{ movie.year }}
-        <span class="float-right">
-            {% if current_user.is_authenticated %}
-            <a class="btn" href="{{ url_for('edit', movie_id=movie.id) }}">Edit</a>
-            <form class="inline-form" method="post" action="{{ url_for('delete', movie_id=movie.id) }}">
-                <input class="btn" type="submit" name="delete" value="Delete" onclick="return confirm('Are you sure?')">
-            </form>
-            {% endif %}
-            <a class="imdb" href="https://www.imdb.com/find?q={{ movie.title }}" target="_blank" title="Find this movie on IMDb">IMDb</a>
-        </span>
-    </li>
-    {% endfor %}
-</ul>
-<img alt="Walking Totoro" class="totoro" src="{{ url_for('static', filename='images/totoro.gif') }}" title="to~to~ro~">
+
+
+<iframe
+  title="Risk Map"
+  src="{{ url_for('static', filename='maps/' ~ current_city ~ '/' ~ current_district ~ '/RegionalLoss_DS_Struct_0.html') }}">
+</iframe>
+
+<div class="SelectionPanelContainer">
+
+  <div class="SelectionPanel">
+    <form action="{{ url_for('index') }}" method="post">
+      <label for="province">省份:</label>
+      <select id="province" name="province" onchange="onProvinceChange()">
+        {% for province in provinces %}
+        <option value="{{ province }}" {% if province == current_province %}selected{% endif %}>{{ province }}</option>
+        {% endfor %}
+      </select>
+      <label for="city">城市:</label>
+      <select id="city" name="city" onchange="onCityChange()">
+        {% for city in cities %}
+        <option value="{{ city }}" {% if city == current_city %}selected{% endif %}>{{ city }}</option>
+        {% endfor %}
+      </select>
+      <label for="district">县/区:</label>
+      <select id="district" name="district">
+        {% for district in districts %}
+        <option value="{{ district }}" {% if district == current_district %}selected{% endif %}>{{ district }}</option>
+        {% endfor %}
+      </select>
+      <input type="submit" value="更新地图">
+    </form>
+  </div>
+
+  <div class="EQsource">
+    <h3>震源信息</h3>
+    <p>震级：{{ eq_magnitude }}</p>
+    <p>深度：{{ eq_depth }}</p>
+  </div>
+
+  <div class="CDF_loss">
+    <h3>地震损失概率分布</h3>
+    <img src="https://via.placeholder.com/150" alt="地震损失概率分布">
+  </div>
+</div>
+
 {% endblock %}
