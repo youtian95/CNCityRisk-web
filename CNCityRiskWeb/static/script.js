@@ -8,6 +8,7 @@ function onProvinceChange() {
         .then(response => response.json())  // 解析 JSON 数据
         .then(data => {
             const citySelect = document.getElementById("city");
+            if (!citySelect) return;
 
             // 清空当前城市选项
             citySelect.innerHTML = "";
@@ -36,6 +37,7 @@ function onCityChange() {
         .then(response => response.json())  // 解析 JSON 数据
         .then(data => {
             const districtSelect = document.getElementById("district");
+            if (!districtSelect) return;
 
             // 清空当前区选项
             districtSelect.innerHTML = "";

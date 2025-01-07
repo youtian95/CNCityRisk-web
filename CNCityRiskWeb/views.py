@@ -4,43 +4,84 @@ from pathlib import Path
 from CNCityRiskWeb import app
 from CNCityRiskWeb import models
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
+provinces = list(models.Province_City_District.keys())
 
-    provinces = list(models.Province_City_District.keys())
-    if request.method == 'POST':
-        current_province = request.form['province']
+@app.route('/', methods=['GET','POST'])
+def index():
+    if request.method == 'GET':
+        current_province = request.args.get('province', '湖北省')
         cities = list(models.Province_City_District[current_province].keys())
-        current_city = request.form['city']
+        current_city = request.args.get('city', '武汉')
         districts = list(models.Province_City_District[current_province][current_city])
+        current_district = request.args.get('district', '武昌区')
+
+        html_content = models.get_map_rupture(current_city)
+        return render_template('index.html', 
+            html_content=html_content,
+            eq_i_rup=0,
+            provinces=provinces, current_province=current_province,
+            cities=cities, current_city=current_city, 
+            districts=districts, current_district=current_district)
+    else:
+        action = request.form.get('action')
+        current_province = request.form['province']
+        current_city = request.form['city']
+        current_district = request.form['district']
+        eq_i_rup = request.form['eq_i_rup']
+
+        if action == "切换城市":
+            cities = list(models.Province_City_District[current_province].keys())
+            districts = list(models.Province_City_District[current_province][current_city])
+            html_content = models.get_map_rupture(current_city)
+            return render_template('index.html', 
+                html_content=html_content,
+                eq_i_rup=eq_i_rup,
+                provinces=provinces, current_province=current_province,
+                cities=cities, current_city=current_city,
+                districts=districts, current_district=current_district)
+        elif action == "显示损失分布图":
+            return redirect(url_for('LossMap', province=current_province, city=current_city, district=current_district, eq_i_rup=eq_i_rup))
+
+@app.route('/LossMap', methods=['GET','POST'])
+def LossMap():
+
+    if request.method == 'GET':
+        current_province = request.args.get('province')
+        current_city = request.args.get('city')
+        current_district = request.args.get('district')
+        eq_i_rup = request.args.get('eq_i_rup')
+        LossType = 'DS_Struct'
+    else:
+        action = request.form.get('action')
+
+        current_province = request.form['province']
+        current_city = request.form['city']
         current_district = request.form['district']
         eq_i_rup = request.form['eq_i_rup']
         LossType = request.form['LossType']
-    else:
-        current_province = '湖北省'
-        cities = list(models.Province_City_District[current_province].keys())
-        current_city = '武汉'
-        districts = list(models.Province_City_District[current_province][current_city])
-        current_district = '武昌区'
-        eq_i_rup = 0
-        LossType='DS_Struct'
+
+        if action == "切换城市":
+            return redirect(url_for('index', province=current_province, city=current_city, district=current_district))
+        elif action == "更新损失地图":
+            pass
+        
+    cities = list(models.Province_City_District[current_province].keys())
+    districts = list(models.Province_City_District[current_province][current_city])
 
     # 地图文件
-    map_path = models.get_map_regional_losses(current_city, current_district, i_rup=eq_i_rup, LossType=LossType, savedir=Path(app.static_folder) / 'maps')
-    if not map_path:
-        flash('地图文件不存在！')
-        return redirect(url_for('index'))
-    eq_info = models.get_EQ_info_from_map(map_path)
-    map_path = str(map_path.relative_to(app.static_folder).as_posix())
+    html_content = models.get_map_regional_losses(current_city, current_district, i_rup=eq_i_rup, LossType=LossType, savedir=Path(app.static_folder) / 'maps')
+    if not html_content:
+        return '地图文件不存在！', 404
+    eq_info = models.get_EQ_info_from_map(html_content)
 
     # CDF图文件
-    CDF_img_path = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup = eq_i_rup, savedir=Path(app.static_folder) / 'maps')
-    if not CDF_img_path:
-        flash('CDF图文件不存在！')
-        return redirect(url_for('index'))
-    CDF_img_path = str(CDF_img_path.relative_to(app.static_folder).as_posix())
+    CDF_img_content = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup = eq_i_rup, savedir=Path(app.static_folder) / 'maps')
+    if not CDF_img_content:
+        return 'CDF图文件不存在！', 404
     
-    return render_template('index.html', map_path=map_path, CDF_img_path=CDF_img_path,
+    return render_template('lossmap.html', 
+            html_content=html_content, 
+            CDF_img_content=CDF_img_content,
             provinces=provinces, current_province=current_province,
             cities=cities, current_city=current_city, 
             districts=districts, current_district=current_district, 

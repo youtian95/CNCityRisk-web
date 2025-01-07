@@ -39,7 +39,20 @@ iframe {
 
 /* 左下角面板 */
 
-.SelectionPanelContainer {
+.SelectionPanelContainer-index {
+    width: 110px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 10px;
+    background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
+}
+
+.SelectionPanelContainer-lossmap {
     width: 500px;
     display: flex;
     flex-wrap: wrap;
@@ -51,21 +64,22 @@ iframe {
     padding: 10px;
     background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
 }
-.SelectionPanelContainer .SelectionPanel {
+.SelectionPanelContainer-lossmap .SelectionPanel {
     width: 30%;
     text-align: left;
 }
-.SelectionPanelContainer .EQsource {
+.SelectionPanelContainer-lossmap .EQsource {
     width: 30%;
 }
-.SelectionPanelContainer .CDF_loss {
+.SelectionPanelContainer-lossmap .CDF_loss {
     width: 40%;
 }
 
 input[type="submit"] {
     margin: 10px 0;
-    padding: 5px 10px;
+    padding: 2px 4px;
     border: none;
+    border-radius: 5px;
 }
 
 input[type="submit"]:hover {
