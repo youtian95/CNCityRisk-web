@@ -1,0 +1,94 @@
+body {
+    margin: auto;
+    font-size: 14px;
+    font-family: Consolas, '微软雅黑', 'Courier New', monospace;
+    line-height: 1.5;
+    margin: 0%;
+}
+
+p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+.alert {
+    position: relative;
+    padding: 7px;
+    margin: 7px 0;
+    border: 1px solid transparent;
+    color: #004085;
+    background-color: #cce5ff;
+    border-color: #b8daff;
+    border-radius: 5px;
+}
+
+/* 地图 */
+
+iframe {
+    width: 100%;
+    height: 100vh;
+    border: none;
+}
+
+/* 左下角面板 */
+
+.SelectionPanelContainer {
+    width: 500px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 10px;
+    background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
+}
+.SelectionPanelContainer .SelectionPanel {
+    width: 30%;
+    text-align: left;
+}
+.SelectionPanelContainer .EQsource {
+    width: 30%;
+}
+.SelectionPanelContainer .CDF_loss {
+    width: 40%;
+}
+
+input[type="submit"] {
+    margin: 10px 0;
+    padding: 5px 10px;
+    border: none;
+}
+
+input[type="submit"]:hover {
+    background-color: #7b7b7b; /* darker background on hover */
+}
+
+h3 {
+    margin: 10px 0;
+}
+
+/* 进度条 */
+
+.progress-bar {
+    width: 300px;
+    border: 1px solid #ccc;
+    background-color: #f2f2f2;
+    height: 20px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.progress {
+    background-color: #4CAF50;
+    height: 100%;
+    width: 0%;
+}

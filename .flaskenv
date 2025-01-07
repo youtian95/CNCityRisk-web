@@ -1,2 +1,3 @@
 FLASK_ENV=development
-FLASK_APP=CNCityRisk
+FLASK_DEBUG=True
+FLASK_APP=CNCityRiskWeb

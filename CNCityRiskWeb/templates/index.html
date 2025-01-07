@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+
+<iframe
+  title="Risk Map"
+  src="{{ url_for('static', filename=map_path) }}"></iframe>
+</iframe>
+
+<div class="SelectionPanelContainer">
+
+  <div class="SelectionPanel">
+    <form action="{{ url_for('index') }}" method="post">
+      <input type="submit" value="更新地图">
+      <br>
+      <label for="province">省份:</label>
+      <select id="province" name="province" onchange="onProvinceChange()">
+        {% for province in provinces %}
+        <option value="{{ province }}" {% if province == current_province %}selected{% endif %}>{{ province }}</option>
+        {% endfor %}
+      </select>
+      <br>
+      <label for="city">城市:</label>
+      <select id="city" name="city" onchange="onCityChange()">
+        {% for city in cities %}
+        <option value="{{ city }}" {% if city == current_city %}selected{% endif %}>{{ city }}</option>
+        {% endfor %}
+      </select>
+      <br>
+      <label for="district">县/区:</label>
+      <select id="district" name="district">
+        {% for district in districts %}
+        <option value="{{ district }}" {% if district == current_district %}selected{% endif %}>{{ district }}</option>
+        {% endfor %}
+      </select>
+      <label for="LossType">损失类型:</label>
+      <select id="LossType" name="LossType">
+        {% for loss_type in ['DS_Struct'] %}
+        <option value="{{ loss_type }}" {% if loss_type == LossType %}selected{% endif %}>{{ loss_type }}</option>
+        {% endfor %}
+      </select>
+      <br>
+      <label for="eq_i_rup">震源索引:</label>
+      <input type="number" id="eq_i_rup" name="eq_i_rup" value="{{ eq_i_rup }}" min="0" style="width: 40px;">
+    </form>
+  </div>
+
+  <div class="EQsource">
+    <h3>震源信息</h3>
+    <p>震级：{{ eq_magnitude }}</p>
+    <p>深度(km)：{{ eq_depth }}</p>
+    <p>长度(km)：{{ eq_length }}</p>
+    <p>宽度(km)：{{ eq_width }}</p>
+    <p>走向(°)：{{ eq_strike }}</p>
+    <p>倾角(°)：{{ eq_dip }}</p>
+    <p>滑动角(°)：{{ eq_rake }}</p>
+  </div>
+
+  <div class="CDF_loss">
+    <h3>地震损失概率分布</h3>
+    <img src="{{ url_for('static', filename=CDF_img_path) }}" alt="地震损失概率分布">
+  </div>
+</div>
+
+{% endblock %}
