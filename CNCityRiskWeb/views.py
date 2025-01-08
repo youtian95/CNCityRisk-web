@@ -76,8 +76,8 @@ def LossMap():
 
     # CDF图文件
     CDF_img_content = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup = eq_i_rup, savedir=Path(app.static_folder) / 'maps')
-    if not CDF_img_content:
-        return 'CDF图文件不存在！', 404
+    # if not CDF_img_content:
+    #     return 'CDF图文件不存在！', 404
     
     return render_template('lossmap.html', 
             html_content=html_content, 
