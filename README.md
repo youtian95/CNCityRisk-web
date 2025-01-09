@@ -18,8 +18,10 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
     conda activate ./env
     ```
 1. 将安装包`cncityrisk-0.1.0-py3-none-any.whl`上传到当前目录。
-1. 安装依赖：
+1. 安装依赖（GDAL用`pip install`会报错）：
     ```bash
+    conda install conda-forge::GDAL=3.7.3
+    pip install cncityrisk-0.1.0-py3-none-any.whl
     pip install -r requirements.txt
     ```
 1. 将`maps.7z`损失图结果数据文件上传到`~/CNCityRisk-web/CNCityRiskWeb/static/maps`目录下。
@@ -31,6 +33,7 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
     ```
     FLASK_ENV=production
     FLASK_DEBUG=FALSE
+    ...
     ```
 
 ### 使用 Gunicorn 运行应用
