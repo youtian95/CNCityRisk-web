@@ -87,3 +87,26 @@ Gunicorn 是一个 WSGI 服务器，用于运行 Flask 应用，并将其作为�
 ### 完成
 
 在浏览器中打开 `http://your_domain_or_IP` 查看应用程序。
+
+## 更新服务器上的代码
+
+1. 拉取最新代码：
+    ```bash
+    cd ~/CNCityRisk-web
+    git pull
+    ```
+
+2. 更新依赖：
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3. 重启 Gunicorn 服务：
+    ```bash
+    sudo systemctl restart gunicorn
+    ```
+
+4. 重启 Nginx 服务：
+    ```bash
+    sudo systemctl restart nginx
+    ```

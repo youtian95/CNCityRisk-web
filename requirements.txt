@@ -16,7 +16,6 @@ click==8.1.7
 click-plugins==1.1.1
 cligj==0.7.2
 cloudpickle==3.1.0
-CNCityRisk @ file:///./cncityrisk-0.1.0-py3-none-any.whl#sha256=396bedb1b1574f23a00d0065f4b6ff24a5787f680c9cdeade0a793b89263762c
 colorama==0.4.6
 coloredlogs @ https://wheelhouse.openquake.org/v3/py/coloredlogs-15.0.1-py2.py3-none-any.whl#sha256=612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934
 contourpy @ https://wheelhouse.openquake.org/v3/windows/py311/contourpy-1.2.0-cp311-cp311-win_amd64.whl#sha256=99ad97258985328b4f207a5e777c1b44a83bfe7cf1f87b99f9c11d4ee477c4de

@@ -53,7 +53,7 @@ iframe {
 }
 
 .SelectionPanelContainer-lossmap {
-    width: 500px;
+    width: 300px;
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
@@ -65,14 +65,18 @@ iframe {
     background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
 }
 .SelectionPanelContainer-lossmap .SelectionPanel {
-    width: 30%;
+    width: 50%-5px;
     text-align: left;
+    padding: 5px;
+    border: 1px solid #000000;
 }
 .SelectionPanelContainer-lossmap .EQsource {
-    width: 30%;
+    width: 50%-5px;
+    padding: 5px;
+    border: 1px solid #000000;
 }
 .SelectionPanelContainer-lossmap .CDF_loss {
-    width: 40%;
+    width: 100%;
 }
 
 input[type="submit"] {
@@ -88,21 +92,4 @@ input[type="submit"]:hover {
 
 h3 {
     margin: 10px 0;
-}
-
-/* 进度条 */
-
-.progress-bar {
-    width: 300px;
-    border: 1px solid #ccc;
-    background-color: #f2f2f2;
-    height: 20px;
-    border-radius: 5px;
-    overflow: hidden;
-}
-
-.progress {
-    background-color: #4CAF50;
-    height: 100%;
-    width: 0%;
 }
