@@ -18,9 +18,9 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
     conda activate ./env
     ```
 1. 将安装包`cncityrisk-0.1.0-py3-none-any.whl`上传到当前目录。
-1. 安装依赖（GDAL用`pip install`会报错）：
+1. 安装依赖（GDAL用`pip install`会报错，所以先安装好）：
     ```bash
-    conda install conda-forge::GDAL=3.7.3
+    conda install -c conda-forge GDAL=3.7.3
     pip install cncityrisk-0.1.0-py3-none-any.whl
     pip install -r requirements.txt
     ```
