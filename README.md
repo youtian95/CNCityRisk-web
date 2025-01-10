@@ -2,6 +2,14 @@
 
 CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序，使用 Flask 框架构建。
 
+## [网站地址](http://106.15.93.61/)
+
+[![BldLoss](CNCityRiskWeb/static/images/BldLoss.png)](http://106.15.93.61/)
+
+## 说明文档
+
+* [文档](https://youtian95.github.io/2025/01/09/CNCityRiskMap/)
+
 ## 部署到服务器
 
 ###  配置环境
@@ -35,6 +43,16 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
     FLASK_DEBUG=FALSE
     ...
     ```
+1. 添加`config.ini`文件：
+    ```bash
+    vim config.ini
+    ```
+    添加以下内容：
+    ```ini
+    [API]
+    api_key_OpenTopography = your_key
+    api_key_TDT = your_key
+    ```
 
 ### 使用 Gunicorn 运行应用
 
@@ -44,9 +62,9 @@ Gunicorn 是一个 WSGI 服务器，用于运行 Flask 应用，并将其作为�
     ```
     pip install gunicorn
     ```
-2. 运行 Flask 应用：
+2. 运行 Flask 应用（`&`在后台运行）：
     ```bash
-    gunicorn -w 4 -b 0.0.0.0:8000 wsgi:app
+    gunicorn -w 4 -b 0.0.0.0:8000 wsgi:app &
     ```
 
 ### 配置 Nginx 作为反向代理
