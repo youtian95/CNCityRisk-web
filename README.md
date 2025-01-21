@@ -117,17 +117,20 @@ Gunicorn 是一个 WSGI 服务器，用于运行 Flask 应用，并将其作为�
     git pull
     ```
 
-2. 更新依赖：
+1. 上传建筑数据文件`.\CNCityRisk\Data\BldData\`到`cncityrisk`包中的相应位置，上传地图数据文件`CNCityRisk-web\CNCityRiskWeb\static\maps\maps.7z`，上传安装包`cncityrisk-0.1.0-py3-none-any.whl`
+
+1. 更新依赖：
     ```bash
+    pip install cncityrisk-0.1.0-py3-none-any.whl
     pip install -r requirements.txt
     ```
 
-3. 重启 Gunicorn 服务：
+1. 重启 Gunicorn 服务：
     ```bash
     sudo systemctl restart gunicorn
     ```
 
-4. 重启 Nginx 服务：
+1. 重启 Nginx 服务：
     ```bash
     sudo systemctl restart nginx
     ```
