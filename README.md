@@ -12,7 +12,7 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
 
 ## 部署到服务器
 
-###  配置环境
+### 配置环境
 
 1. 克隆仓库：
     ```bash
@@ -22,14 +22,14 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
     ```bash
     source ~/.bashrc
     cd CNCityRisk-web
-    conda create -p ./env python=3.11
+    conda create -p ./env python=3.12
     conda activate ./env
     ```
 1. 将安装包`cncityrisk-0.1.0-py3-none-any.whl`上传到当前目录。
 1. 安装依赖（GDAL用`pip install`会报错，所以先安装好）：
     ```bash
-    conda install -c conda-forge GDAL=3.7.3
-    pip install cncityrisk-0.1.0-py3-none-any.whl
+    conda install -c conda-forge GDAL
+    pip install cncityrisk-0.1.1-py3-none-any.whl
     pip install -r requirements.txt
     ```
 1. 将`maps.7z`损失图结果数据文件上传到`~/CNCityRisk-web/CNCityRiskWeb/static/maps`目录下。
@@ -133,4 +133,11 @@ Gunicorn 是一个 WSGI 服务器，用于运行 Flask 应用，并将其作为�
 1. 重启 Nginx 服务：
     ```bash
     sudo systemctl restart nginx
+    ```
+
+## 本地开发
+
+启动开发服务器：
+    ```powershell
+    flask run
     ```

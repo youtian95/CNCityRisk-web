@@ -1,15 +1,52 @@
-*.pyc
-*~
-__pycache__
-.DS_Store
-htmlcov/
-.coverage
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-.env
-*.db
-venv
-env
-config.ini
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
 cncityrisk*.whl
 
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+coverage.xml
+*.cover
+
+# Local development settings
+.env
+config.ini
+*.db
+*.sqlite3
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
 CNCityRiskWeb/static/maps/*.7z
