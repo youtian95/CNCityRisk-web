@@ -1,0 +1,29 @@
+services:
+  flask:
+    build: .
+    restart: always
+    networks:
+      - app-network
+    volumes:
+      - ./CNCityRiskWeb/static/maps:/app/CNCityRiskWeb/static/maps
+      - ./config.ini:/app/config.ini
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=False
+      - PYTHONUNBUFFERED=1
+  
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - flask
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
