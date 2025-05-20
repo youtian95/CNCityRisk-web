@@ -1,7 +1,7 @@
 FROM continuumio/miniconda3:latest
 
 # 设置工作目录
-WORKDIR /CNCityRiskWeb
+WORKDIR /app
 
 # 创建conda环境并安装特定版本的GDAL依赖
 RUN conda create -n cncityriskweb python=3.12 -y 

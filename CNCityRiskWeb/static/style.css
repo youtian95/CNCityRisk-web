@@ -1,9 +1,22 @@
+/* 基础样式设置 */
+html {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
-    margin: auto;
+    margin: 0;
+    padding: 0;
     font-size: 14px;
     font-family: Consolas, '微软雅黑', 'Courier New', monospace;
     line-height: 1.5;
-    margin: 0%;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    position: relative;
 }
 
 p {
@@ -30,11 +43,15 @@ img {
 }
 
 /* 地图 */
-
 iframe {
     width: 100%;
     height: 100vh;
     border: none;
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
 }
 
 /* 左下角面板 */
@@ -50,6 +67,7 @@ iframe {
     left: 0;
     padding: 10px;
     background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
+    z-index: 10;
 }
 
 .SelectionPanelContainer-lossmap {
@@ -63,15 +81,16 @@ iframe {
     left: 0;
     padding: 10px;
     background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
+    z-index: 10;
 }
 .SelectionPanelContainer-lossmap .SelectionPanel {
-    width: 50%-5px;
+    width: calc(50% - 5px);
     text-align: left;
     padding: 5px;
     border: 1px solid #000000;
 }
 .SelectionPanelContainer-lossmap .EQsource {
-    width: 50%-5px;
+    width: calc(50% - 5px);
     padding: 5px;
     border: 1px solid #000000;
 }

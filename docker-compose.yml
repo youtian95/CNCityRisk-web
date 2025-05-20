@@ -19,6 +19,7 @@ services:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./CNCityRiskWeb/static:/app/CNCityRiskWeb/static
     depends_on:
       - flask
     networks:
