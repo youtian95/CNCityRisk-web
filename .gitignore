@@ -50,3 +50,5 @@ Thumbs.db
 
 # Project specific
 CNCityRiskWeb/static/maps/*.7z
+
+cncityrisk.tar
