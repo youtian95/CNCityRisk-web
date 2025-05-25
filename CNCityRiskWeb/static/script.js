@@ -1,4 +1,9 @@
 
+/**
+ * 处理省份选择变更事件
+ * 当用户选择省份时，异步获取该省份下的城市列表并更新城市下拉选择框
+ * 同时触发城市变更事件以更新区县列表
+ */
 function onProvinceChange() {
     // 获取选中的省份
     const province = document.getElementById("province").value;
@@ -27,6 +32,11 @@ function onProvinceChange() {
         .catch(error => console.error('Error:', error));
 }
 
+
+/**
+ * 处理城市选择变更事件
+ * 当用户选择城市时，异步获取该城市下的区县列表并更新区县下拉选择框
+ */ 
 function onCityChange() {
     
     const province = document.getElementById("province").value;

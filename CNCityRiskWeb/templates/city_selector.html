@@ -1,0 +1,25 @@
+<!-- 城市选择器组件 -->
+<div class="city-selector">
+    <label for="province">省份:</label>
+    <select id="province" name="province" onchange="onProvinceChange()">
+        {% for province in provinces %}
+        <option value="{{ province }}" {% if province == current_province %}selected{% endif %}>{{ province }}</option>
+        {% endfor %}
+    </select>
+    <br>
+    <label for="city">城市:</label>
+    <select id="city" name="city" onchange="onCityChange()">
+        {% for city in cities %}
+        <option value="{{ city }}" {% if city == current_city %}selected{% endif %}>{{ city }}</option>
+        {% endfor %}
+    </select>
+    <br>
+    <label for="district">区/县:</label>
+    <select id="district" name="district">
+        {% for district in districts %}
+        <option value="{{ district }}" {% if district == current_district %}selected{% endif %}>{{ district }}</option>
+        {% endfor %}
+    </select>
+    <br>
+    <input type="submit" name="action" value="切换城市">
+</div>

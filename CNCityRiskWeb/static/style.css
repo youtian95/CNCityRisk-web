@@ -54,50 +54,6 @@ iframe {
     z-index: 1;
 }
 
-/* 左下角面板 */
-
-.SelectionPanelContainer-index {
-    width: 110px;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-start;
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    padding: 10px;
-    background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
-    z-index: 10;
-}
-
-.SelectionPanelContainer-lossmap {
-    width: 300px;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: flex-start;
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    padding: 10px;
-    background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
-    z-index: 10;
-}
-.SelectionPanelContainer-lossmap .SelectionPanel {
-    width: calc(50% - 5px);
-    text-align: left;
-    padding: 5px;
-    border: 1px solid #000000;
-}
-.SelectionPanelContainer-lossmap .EQsource {
-    width: calc(50% - 5px);
-    padding: 5px;
-    border: 1px solid #000000;
-}
-.SelectionPanelContainer-lossmap .CDF_loss {
-    width: 100%;
-}
-
 input[type="submit"] {
     margin: 10px 0;
     padding: 2px 4px;

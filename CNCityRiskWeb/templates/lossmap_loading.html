@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+
+{% block head %}
+{{ super() }}
+<style>
+.SelectionPanelContainer-lossmap {
+    width: 300px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 0px;
+    background-color: rgba(128, 128, 128, 0.2); /* semi-transparent gray */
+    z-index: 10;
+}
+.SelectionPanelContainer-lossmap .SelectionPanel {
+    width: calc(50% - 12px);
+    text-align: left;
+    margin: 0px;
+    padding: 5px;
+    border: 1px solid #000000;
+}
+.SelectionPanelContainer-lossmap #eqInfo {
+    width: calc(50% - 12px);
+    margin: 0px;
+    padding: 5px;
+    border: 1px solid #000000;
+}
+.SelectionPanelContainer-lossmap .EQsource {
+    width: 100%;
+}
+.SelectionPanelContainer-lossmap .CDF_loss {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 10px;
+    box-sizing: border-box;
+}
+.SelectionPanelContainer-lossmap .CDF_loss h3 {
+    padding: 0;
+    font-weight: bold;
+    color: #333;
+    white-space: nowrap;
+}
+.SelectionPanelContainer-lossmap .CDF_loss img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- 加载状态的iframe -->
+<iframe id="mapFrame" title="Risk Map" style="width: 100%; height: 100vh; border: none; background-color: #f0f0f0;" srcdoc='
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        .loading-container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            background-color: #f0f0f0;
+        }
+        .loading-content { text-align: center; }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-container">
+        <div class="loading-content">
+            <h2>正在加载地图数据...</h2>
+            <div class="loading-spinner"></div>
+            <p>请稍候，数据传输中...</p>
+        </div>
+    </div>
+</body>
+</html>
+'>
+</iframe>
+
+<div class="SelectionPanelContainer-lossmap">
+  <div class="SelectionPanel">
+    <form method="post" action="{{ url_for('LossMap') }}">
+      {% include 'city_selector.html' %}
+      <label for="LossType">损失类型:</label>
+      <select id="LossType" name="LossType">
+        {% for loss_type in ['DS_Struct'] %}
+        <option value="{{ loss_type }}" {% if loss_type == LossType %}selected{% endif %}>{{ loss_type }}</option>
+        {% endfor %}
+      </select>
+      <br>
+      <label for="eq_i_rup">震源索引:</label>
+      <input type="number" id="eq_i_rup" name="eq_i_rup" value="{{ eq_i_rup }}" min="0" style="width: 40px;">
+      <br>
+      <input type="submit" name="action" value="更新损失地图">
+    </form>  
+  </div>  <div id="eqInfo" style="display: none;">
+    {% include 'earthquake_info.html' %}
+  </div>
+
+  <div class="CDF_loss" id="cdfLoss" style="display: none;">
+    <h3>地震损失概率分布</h3>
+    <img id="cdfImage" src="" alt="地震损失概率分布">
+  </div>
+</div>
+
+<script>
+// 页面加载完成后异步获取地图数据
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const city = '{{ current_city }}';
+    const district = '{{ current_district }}';
+    const eq_i_rup = '{{ eq_i_rup }}';
+    const LossType = '{{ LossType }}';
+    
+    // 发起异步请求
+    fetch(`/get_map_data?city=${city}&district=${district}&eq_i_rup=${eq_i_rup}&LossType=${LossType}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('地图数据加载失败');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // 更新iframe内容
+            const iframe = document.getElementById('mapFrame');
+            iframe.srcdoc = data.html_content;
+            // 显示并更新震源信息
+            if (data.eq_info) {
+                document.getElementById('eq_magnitude').textContent = data.eq_info.Magnitude;
+                document.getElementById('eq_depth').textContent = data.eq_info.Depth;
+                document.getElementById('eq_length').textContent = data.eq_info.Length;
+                document.getElementById('eq_width').textContent = data.eq_info.Width;
+                document.getElementById('eq_strike').textContent = data.eq_info.Strike;
+                document.getElementById('eq_dip').textContent = data.eq_info.Dip;
+                document.getElementById('eq_rake').textContent = data.eq_info.Rake;
+                document.getElementById('eqInfo').style.display = 'flex';
+            }
+              // 显示CDF图
+            if (data.CDF_img_content) {
+                document.getElementById('cdfImage').src = `data:image/jpeg;base64,${data.CDF_img_content}`;
+                document.getElementById('cdfLoss').style.display = 'flex';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('mapFrame').srcdoc = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100vh;">
+                    <div style="text-align: center;">
+                        <h2>加载失败</h2>
+                        <p>${error.message}</p>
+                        <button onclick="location.reload()">重试</button>
+                    </div>
+                </div>
+            `;
+        });
+});
+</script>
+
+{% endblock %}

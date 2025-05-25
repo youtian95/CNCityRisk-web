@@ -44,7 +44,6 @@ def index():
 
 @app.route('/LossMap', methods=['GET','POST'])
 def LossMap():
-
     if request.method == 'GET':
         current_province = request.args.get('province')
         current_city = request.args.get('city')
@@ -53,7 +52,6 @@ def LossMap():
         LossType = 'DS_Struct'
     else:
         action = request.form.get('action')
-
         current_province = request.form['province']
         current_city = request.form['city']
         current_district = request.form['district']
@@ -68,26 +66,37 @@ def LossMap():
     cities = list(models.Province_City_District[current_province].keys())
     districts = list(models.Province_City_District[current_province][current_city])
 
-    # 地图文件
-    html_content = models.get_map_regional_losses(current_city, current_district, i_rup=eq_i_rup, LossType=LossType, savedir=Path(app.static_folder) / 'maps')
-    if not html_content:
-        return '地图文件不存在！', 404
-    eq_info = models.get_EQ_info_from_map(html_content)
-
-    # CDF图文件
-    CDF_img_content = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup = eq_i_rup, savedir=Path(app.static_folder) / 'maps')
-    # if not CDF_img_content:
-    #     return 'CDF图文件不存在！', 404
-    
-    return render_template('lossmap.html', 
-            html_content=html_content, 
-            CDF_img_content=CDF_img_content,
+    # 返回加载页面
+    return render_template('lossmap_loading.html', 
             provinces=provinces, current_province=current_province,
             cities=cities, current_city=current_city, 
             districts=districts, current_district=current_district, 
             eq_i_rup=eq_i_rup,
-            LossType=LossType,
-            eq_magnitude=eq_info['Magnitude'], eq_strike=eq_info['Strike'], eq_dip=eq_info['Dip'], eq_rake=eq_info['Rake'], eq_depth=eq_info['Depth'], eq_length=eq_info['Length'], eq_width=eq_info['Width'])
+            LossType=LossType)
+
+# 新增异步获取地图数据的路由
+@app.route('/get_map_data')
+def get_map_data():
+    current_city = request.args.get('city')
+    current_district = request.args.get('district')
+    eq_i_rup = request.args.get('eq_i_rup', 0)
+    LossType = request.args.get('LossType', 'DS_Struct')
+    
+    # 地图文件
+    html_content = models.get_map_regional_losses(current_city, current_district, i_rup=eq_i_rup, LossType=LossType, savedir=Path(app.static_folder) / 'maps')
+    if not html_content:
+        return jsonify({'error': '地图文件不存在！'}), 404
+    
+    eq_info = models.get_EQ_info_from_map(html_content)
+    
+    # CDF图文件
+    CDF_img_content = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup = eq_i_rup, savedir=Path(app.static_folder) / 'maps')
+    
+    return jsonify({
+        'html_content': html_content,
+        'CDF_img_content': CDF_img_content,
+        'eq_info': eq_info
+    })
 
 
 @app.route('/get_city_list')

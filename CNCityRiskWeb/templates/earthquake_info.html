@@ -1,0 +1,11 @@
+<!-- 震源信息组件 -->
+<div class="EQsource">
+    <h3>震源信息</h3>
+    <p>震级：<span id="eq_magnitude">{{ eq_magnitude if eq_magnitude is defined else '-' }}</span></p>
+    <p>深度(km)：<span id="eq_depth">{{ eq_depth if eq_depth is defined else '-' }}</span></p>
+    <p>长度(km)：<span id="eq_length">{{ eq_length if eq_length is defined else '-' }}</span></p>
+    <p>宽度(km)：<span id="eq_width">{{ eq_width if eq_width is defined else '-' }}</span></p>
+    <p>走向(°)：<span id="eq_strike">{{ eq_strike if eq_strike is defined else '-' }}</span></p>
+    <p>倾角(°)：<span id="eq_dip">{{ eq_dip if eq_dip is defined else '-' }}</span></p>
+    <p>滑动角(°)：<span id="eq_rake">{{ eq_rake if eq_rake is defined else '-' }}</span></p>
+</div>
