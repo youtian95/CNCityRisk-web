@@ -15,6 +15,18 @@ else:
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev')
+
+# 优化压缩配置
+app.config['COMPRESS_MIMETYPES'] = [
+    'text/html',
+    'text/css',
+    'text/xml',
+    'application/json',
+    'application/javascript'
+]
+app.config['COMPRESS_LEVEL'] = 6  # 压缩级别 1-9
+app.config['COMPRESS_MIN_SIZE'] = 50  # 最小压缩大小
+
 compress = Compress(app)
 
 
