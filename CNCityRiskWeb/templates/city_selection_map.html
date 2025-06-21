@@ -1,0 +1,378 @@
+{% extends 'base.html' %}
+
+{% block head %}
+{{ super() }}
+<!-- OpenLayers CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+<!-- OpenLayers JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<script src="{{ url_for('static', filename='map-styles.js') }}"></script>
+<style>
+#map {
+    height: 100vh;
+    width: 100%;
+}
+
+.city-info-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    max-width: 300px;
+    min-width: 250px;
+}
+
+.city-info-panel h3 {
+    margin-top: 0;
+    color: #333;
+    font-size: 18px;
+}
+
+.city-info-panel p {
+    margin: 8px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.city-button {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    margin-top: 10px;
+    transition: background-color 0.3s;
+}
+
+.city-button:hover {
+    background-color: #45a049;
+}
+
+.city-button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+.legend {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.legend h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.legend-color {
+    width: 20px;
+    height: 15px;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+}
+
+.title-panel {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.95);
+    padding: 15px 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    text-align: center;
+}
+
+.title-panel h1 {
+    margin: 0;
+    color: #333;
+    font-size: 24px;
+}
+
+.title-panel p {
+    margin: 5px 0 0 0;
+    color: #666;
+    font-size: 14px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="map"></div>
+
+<div class="title-panel">
+    <h1>中国城市地震风险评估系统</h1>
+    <p>点击地图上的城市区域查看详细信息</p>
+</div>
+
+<div class="city-info-panel" id="cityInfoPanel" style="display: none;">
+    <h3 id="cityName">选择城市</h3>
+    <p><strong>省份:</strong> <span id="provinceName">-</span></p>
+    <p><strong>城市:</strong> <span id="cityNameDisplay">-</span></p>
+    <p><strong>可用区县:</strong> <span id="districtCount">-</span> 个</p>    
+    <button class="city-button" id="ruptureSelectionBtn" onclick="enterRuptureSelection()" style="background-color: #ff9800;">
+        震源选择与设计
+    </button>
+</div>
+
+<div class="legend">
+    <h4>图例</h4>
+    <div class="legend-item">
+        <div class="legend-color" style="background-color: #2196F3;"></div>
+        <span>可选择城市</span>
+    </div>
+    <div class="legend-item">
+        <div class="legend-color" style="background-color: #81C784;"></div>
+        <span>鼠标悬停</span>
+    </div>
+    <div class="legend-item">
+        <div class="legend-color" style="background-color: #2E7D32;"></div>
+        <span>已选择城市</span>
+    </div>
+</div>
+
+<script>
+// 全局变量
+let map;
+let cityPolygons = {};
+let selectedCity = null;
+let selectedProvince = null;
+let cityCoordinates = {};
+let vectorSource;
+
+// 初始化地图
+function initMap() {
+    // 创建地图，以中国为中心 (投影坐标系转换)
+    const center = ol.proj.fromLonLat([105.0, 35.0]);
+    
+    map = new ol.Map({
+        target: 'map',
+        layers: [
+            // 使用统一的地图样式配置
+            MapStyles.createOpenLayersLayer()
+        ],
+        view: new ol.View({
+            center: center,
+            zoom: 5,
+            minZoom: 3,
+            maxZoom: 18
+        })
+    });
+    
+    // 添加底图切换控件
+    const styleControl = MapStyles.createOpenLayersStyleControl(map);
+    map.addControl(styleControl);
+    
+    // 创建矢量源和图层用于城市多边形
+    vectorSource = new ol.source.Vector();
+    const vectorLayer = new ol.layer.Vector({
+        source: vectorSource,
+        style: createCityStyle(false) // 默认样式
+    });
+    map.addLayer(vectorLayer);
+    
+    // 添加地图点击事件：点击空白区域取消选择城市
+    map.on('singleclick', function(evt) {
+        const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+            return feature;
+        });
+        
+        if (feature) {
+            // 点击了城市多边形
+            const cityName = feature.get('cityName');
+            const provinceName = feature.get('provinceName');
+            selectCity(cityName, provinceName);
+        } else {
+            // 点击了空白区域
+            clearCitySelection();
+        }
+    });    // 从服务器获取城市坐标数据
+    loadCityCoordinates();
+}
+
+// 创建城市多边形样式
+function createCityStyle(isSelected, isHovered = false) {
+    let fillColor, strokeColor, fillOpacity;
+    
+    if (isSelected) {
+        fillColor = 'rgba(46, 125, 50, 0.6)';  // 深绿色，选中状态
+        strokeColor = '#2E7D32';
+    } else if (isHovered) {
+        fillColor = 'rgba(129, 199, 132, 0.5)';  // 浅绿色，悬停状态
+        strokeColor = '#81C784';
+    } else {
+        fillColor = 'rgba(33, 150, 243, 0.3)';  // 蓝色，默认状态
+        strokeColor = '#2196F3';
+    }
+    
+    return new ol.style.Style({
+        fill: new ol.style.Fill({
+            color: fillColor
+        }),
+        stroke: new ol.style.Stroke({
+            color: strokeColor,
+            width: 2
+        })
+    });
+}
+
+// 从服务器加载城市坐标数据
+function loadCityCoordinates() {
+    console.log('开始加载城市坐标数据...');
+    fetch('/get_city_coordinates')
+        .then(response => response.json())
+        .then(data => {
+            console.log('城市坐标数据加载成功:', data);
+            cityCoordinates = data;
+            addCityPolygons();
+        })
+        .catch(error => {
+            console.error('Error loading city coordinates:', error);
+            // 如果加载失败，显示错误信息
+            alert('无法加载城市数据，请刷新页面重试');
+        });
+}
+
+// 添加城市多边形
+function addCityPolygons() {
+    console.log('开始添加城市多边形，城市数量:', Object.keys(cityCoordinates).length);
+    
+    // 清除现有的城市多边形
+    vectorSource.clear();
+    cityPolygons = {};
+    // 为每个有坐标数据的城市创建多边形
+    Object.keys(cityCoordinates).forEach(city => {
+        const cityData = cityCoordinates[city];
+        let polygonCoords = cityData.coordinates;
+        
+        console.log(`处理城市 ${city}:`, polygonCoords);
+        
+        // 坐标格式已经是[lat, lng]，需要转换为[lng, lat]再投影到Web Mercator
+        const coordinates = [polygonCoords.map(coord => ol.proj.fromLonLat([coord[1], coord[0]]))];
+        
+        // 创建多边形几何
+        const polygon = new ol.geom.Polygon(coordinates);
+        
+        // 创建要素
+        const feature = new ol.Feature({
+            geometry: polygon,
+            cityName: city,
+            provinceName: cityData.province
+        });
+        
+        // 设置默认样式
+        feature.setStyle(createCityStyle(false));
+        
+        // 添加到矢量源
+        vectorSource.addFeature(feature);
+        
+        // 存储要素引用
+        cityPolygons[city] = feature;
+        
+        console.log(`城市 ${city} 多边形添加成功`);
+    });
+    
+    console.log('所有城市多边形添加完成，总数:', Object.keys(cityPolygons).length);
+    
+    // 添加鼠标悬停效果
+    map.on('pointermove', function(evt) {
+        const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+            return feature;
+        });
+        
+        // 重置所有要素样式
+        Object.keys(cityPolygons).forEach(city => {
+            const cityFeature = cityPolygons[city];
+            const isSelected = (selectedCity === city);
+            cityFeature.setStyle(createCityStyle(isSelected, false));
+        });
+        
+        // 如果鼠标悬停在要素上且该要素未被选中，应用悬停样式
+        if (feature && feature.get('cityName') !== selectedCity) {
+            feature.setStyle(createCityStyle(false, true));
+        }
+    });
+}
+
+// 选择城市
+function selectCity(city, province) {
+    // 重置之前选择的城市样式
+    if (selectedCity && cityPolygons[selectedCity]) {
+        cityPolygons[selectedCity].setStyle(createCityStyle(false));
+    }
+
+    // 设置新选择的城市样式
+    selectedCity = city;
+    selectedProvince = province;
+    
+    if (cityPolygons[city]) {
+        cityPolygons[city].setStyle(createCityStyle(true));
+    }
+
+    // 更新信息面板
+    updateCityInfo(city, province);
+    
+    // 显示信息面板
+    document.getElementById('cityInfoPanel').style.display = 'block';
+}
+
+// 更新城市信息面板
+function updateCityInfo(city, province) {
+    document.getElementById('cityName').textContent = city;
+    document.getElementById('provinceName').textContent = province;
+    document.getElementById('cityNameDisplay').textContent = city;
+    
+    // 从城市坐标数据中获取区县数量
+    const districtCount = cityCoordinates[city] ? cityCoordinates[city].district_count : 0;
+    document.getElementById('districtCount').textContent = districtCount;
+}
+
+// 清除城市选择
+function clearCitySelection() {
+    // 重置之前选择的城市样式
+    if (selectedCity && cityPolygons[selectedCity]) {
+        cityPolygons[selectedCity].setStyle(createCityStyle(false));
+    }
+    
+    // 清除选择状态
+    selectedCity = null;
+    selectedProvince = null;
+    
+    // 隐藏信息面板
+    document.getElementById('cityInfoPanel').style.display = 'none';
+}
+
+// 进入震源选择界面
+function enterRuptureSelection() {
+    if (selectedCity && selectedProvince) {
+        // 跳转到新的震源选择界面
+        window.location.href = `/rupture_selection?province=${encodeURIComponent(selectedProvince)}&city=${encodeURIComponent(selectedCity)}`;
+    }
+}
+
+// 页面加载完成后初始化地图
+document.addEventListener('DOMContentLoaded', function() {
+    initMap();
+});
+</script>
+{% endblock %}

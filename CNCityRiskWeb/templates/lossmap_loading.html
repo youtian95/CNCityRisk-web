@@ -104,7 +104,7 @@
 <div class="SelectionPanelContainer-lossmap">
   <div class="SelectionPanel">
     <form method="post" action="{{ url_for('LossMap') }}">
-      {% include 'city_selector.html' %}
+      {% include 'components/city_selector.html' %}
       <label for="LossType">损失类型:</label>
       <select id="LossType" name="LossType">
         {% for loss_type in ['DS_Struct'] %}
@@ -118,7 +118,7 @@
       <input type="submit" name="action" value="更新损失地图">
     </form>  
   </div>  <div id="eqInfo" style="display: none;">
-    {% include 'earthquake_info.html' %}
+    {% include 'components/earthquake_info.html' %}
   </div>
 
   <div class="CDF_loss" id="cdfLoss" style="display: none;">

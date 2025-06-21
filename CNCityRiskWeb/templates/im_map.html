@@ -1,0 +1,962 @@
+{% extends 'base.html' %}
+
+{% block head %}
+{{ super() }}
+<!-- OpenLayers CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+<!-- OpenLayers JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<!-- D3.js for contour generation -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://d3js.org/d3-contour.v4.min.js"></script>
+
+<script src="{{ url_for('static', filename='map-styles.js') }}"></script>
+
+<style>
+.map-container {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+}
+
+.SelectionPanelContainer-immap {
+    width: 250px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+}
+
+.SelectionPanelContainer-immap .SelectionPanel {
+    width: 100%;
+    text-align: left;
+    margin: 0px;
+    padding: 15px;
+    border: none;
+    background-color: transparent;
+}
+
+.SelectionPanelContainer-immap #eqInfo {
+    width: 100%;
+    margin: 10px 0 0 0;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+}
+
+.SelectionPanelContainer-immap .EQsource {
+    width: 100%;
+}
+
+.SelectionPanelContainer-immap .EQsource h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.SelectionPanelContainer-immap label {
+    font-weight: bold;
+    color: #555;
+    margin-top: 8px;
+    display: inline-block;
+}
+
+.SelectionPanelContainer-immap input,
+.SelectionPanelContainer-immap select {
+    margin: 5px 0 10px 0;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.SelectionPanelContainer-immap button {
+    margin: 5px 5px 0 0;
+    padding: 8px 12px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-block;
+}
+
+.SelectionPanelContainer-immap button:hover {
+    background-color: #0056b3;
+}
+
+/* 返回震源选择按钮 */
+.SelectionPanelContainer-immap button:nth-child(2) {
+    background-color: #28a745;
+}
+
+.SelectionPanelContainer-immap button:nth-child(2):hover {
+    background-color: #1e7e34;
+}
+
+/* 返回首页按钮 */
+.SelectionPanelContainer-immap button:last-child {
+    background-color: #6c757d;
+}
+
+.SelectionPanelContainer-immap button:last-child:hover {
+    background-color: #545b62;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(240, 240, 240, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.loading-content {
+    text-align: center;
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.loading-spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 2s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.hidden {
+    display: none !important;
+}
+
+.map-legend {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    font-size: 12px;
+    max-width: 200px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin: 3px 0;
+}
+
+.legend-gradient {
+    width: 150px;
+    height: 20px;
+    background: linear-gradient(to right, 
+        rgba(255, 255, 255, 0.02) 0%,     /* 几乎无色 - 极低IM值 */
+        rgba(255, 220, 220, 0.1) 15%,     /* 极浅粉红 */
+        rgba(255, 180, 180, 0.25) 30%,    /* 浅粉红 */
+        rgba(255, 120, 120, 0.4) 50%,     /* 中等红色 */
+        rgba(220, 80, 80, 0.5) 70%,       /* 较深红色 */
+        rgba(180, 40, 40, 0.55) 85%,      /* 深红色 */
+        rgba(140, 20, 20, 0.55) 100%      /* 很深红色 - 高IM值 */
+    );
+    border: 1px solid #ccc;
+    margin: 5px 0;
+}
+
+.legend-labels {
+    display: flex;
+    justify-content: space-between;
+    width: 150px;
+    font-size: 10px;
+}
+
+.period-info {
+    margin: 5px 0;
+    padding: 5px;
+    background-color: #e9ecef;
+    border-radius: 3px;
+    font-size: 11px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="map-container">
+    <!-- 加载状态 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <h2>正在加载IM中值云图...</h2>
+            <div class="loading-spinner"></div>
+            <p>请稍候，数据传输中...</p>
+        </div>
+    </div>
+    
+    <!-- 地图容器 -->
+    <div id="map" class="map"></div>
+    
+    <!-- 图例 -->    
+    <div class="map-legend">
+        <h4 style="margin: 0 0 10px 0;">IM强度</h4>
+        <div class="legend-gradient"></div>        
+        <div class="legend-labels">
+            <span>0</span>
+            <span>0.5</span>
+            <span>1.0+</span>
+        </div>
+        <h4 style="margin: 0 0 10px 0;">震源范围</h4>
+        <div class="legend-item" style="margin-top: 10px;">
+            <div style="width: 20px; height: 10px; border: 2px dashed #ff0000; background-color: rgba(255, 255, 0, 0.1); margin-right: 5px;"></div>
+        </div>
+        <div class="period-info" id="currentModeInfo">
+            显示模式: <span id="currentModeValue">等值线</span>
+        </div>
+        <div class="period-info" id="currentPeriodInfo">
+            当前周期: <span id="currentPeriodValue">-</span>秒
+        </div>
+        <div class="period-info" id="currentRuptureInfo">
+            震源: <span id="currentRuptureValue">-</span>
+        </div>
+    </div>
+    
+    <!-- 控制面板 -->
+    <div class="SelectionPanelContainer-immap">
+        <div class="SelectionPanel">
+            <form id="mapForm">                
+                <div class="SelectionPanelForRupture">
+                    <label for="eq_i_rup">震源:</label>
+                    <select id="eq_i_rup" name="eq_i_rup">
+                        <!-- 将通过JavaScript动态填充 -->
+                    </select>
+                    
+                    <br>
+                    <label for="period_index">周期:</label>
+                    <select id="period_index" name="period_index">
+                        <!-- 将通过JavaScript动态填充 -->
+                    </select>                    <br>                    
+                    <button type="button" onclick="updateIMMap()">更新地图</button>
+                    
+                    <button type="button" onclick="backToRuptureSelection()">返回震源选择</button>
+                    <button type="button" onclick="backToIndex()">返回首页</button>
+                </div>
+            </form>
+        </div>
+
+        <div id="eqInfo" class="hidden">
+            <div class="EQsource">
+                <h3>地震震源信息</h3>
+                <div id="eqDetails"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 全局变量
+let map;
+let imLayer;
+let ruptureLayer; // 震源矩形框图层
+let currentCity = '{{ current_city }}';
+let currentRupture = parseInt('{{ eq_i_rup }}');
+let currentPeriodIndex = parseInt('{{ period_index }}');
+let imMetadata = {{ im_metadata | tojson | safe }};
+let ruptureGeometry = null; // 震源几何数据，将通过API获取
+let displayMode = 'contour'; // 固定为等值线模式
+
+// 初始化地图
+async function initializeMap() {
+    // 创建地图
+    map = new ol.Map({
+        target: 'map',
+        layers: [
+            MapStyles.createOpenLayersLayer()
+        ],
+        view: new ol.View({
+            center: ol.proj.fromLonLat([114.3055, 30.5928]), // 默认武汉坐标
+            zoom: 10
+        })
+    });        
+    // 添加底图切换控件
+    const styleControl = MapStyles.createOpenLayersStyleControl(map);
+    map.addControl(styleControl);
+    
+    // 创建震源矩形框图层
+    await createRuptureLayer();
+    
+    // 初始化选择器
+    initializePeriodSelector();
+    initializeRuptureSelector();
+    
+    // 加载IM数据
+    loadIMData();
+}
+
+// 初始化周期选择器
+function initializePeriodSelector() {
+    const periodSelect = document.getElementById('period_index');    periodSelect.innerHTML = '';
+    
+    if (imMetadata && imMetadata.periods) {
+        // 确保周期按索引排序
+        const sortedPeriodKeys = Object.keys(imMetadata.periods).sort((a, b) => parseInt(a) - parseInt(b));
+        
+        sortedPeriodKeys.forEach(periodIdx => {
+            const period = imMetadata.periods[periodIdx];
+            const option = document.createElement('option');
+            option.value = periodIdx;
+            option.text = `${period.period_value.toFixed(2)}s (索引${periodIdx})`;
+            if (parseInt(periodIdx) === currentPeriodIndex) {
+                option.selected = true;
+            }
+            periodSelect.appendChild(option);
+        });        
+        // 验证当前选择的周期是否有效
+        if (!imMetadata.periods[currentPeriodIndex]) {
+            currentPeriodIndex = parseInt(sortedPeriodKeys[0]);
+            periodSelect.value = currentPeriodIndex;
+        }
+    } else {
+        // 添加一个默认选项
+        const option = document.createElement('option');
+        option.value = currentPeriodIndex;
+        option.text = `周期索引 ${currentPeriodIndex}`;
+        option.selected = true;
+        periodSelect.appendChild(option);
+    }
+}
+
+// 初始化破裂面选择器
+function initializeRuptureSelector() {
+    const ruptureSelect = document.getElementById('eq_i_rup');
+    ruptureSelect.innerHTML = '';
+    if (imMetadata && imMetadata.ruptures) {
+        // 确保破裂面按索引排序
+        const sortedRuptureKeys = Object.keys(imMetadata.ruptures).sort((a, b) => parseInt(a) - parseInt(b));
+        
+        sortedRuptureKeys.forEach(ruptureIdx => {
+            const rupture = imMetadata.ruptures[ruptureIdx];
+            const option = document.createElement('option');
+            option.value = ruptureIdx;
+            option.text = `${ruptureIdx} (M${rupture.magnitude.toFixed(1)})`;
+            if (parseInt(ruptureIdx) === currentRupture) {
+                option.selected = true;
+            }
+            ruptureSelect.appendChild(option);
+        });
+
+        // 验证当前选择的破裂面是否有效
+        if (!imMetadata.ruptures[currentRupture]) {
+            currentRupture = parseInt(sortedRuptureKeys[0]);
+            ruptureSelect.value = currentRupture;
+        }
+    } else {
+        // 添加一个默认选项
+        const option = document.createElement('option');
+        option.value = currentRupture;
+        option.text = `${currentRupture}`;
+        option.selected = true;
+        ruptureSelect.appendChild(option);
+    }
+}
+
+// 加载IM数据
+function loadIMData() {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    loadingOverlay.classList.remove('hidden');
+    
+    // 移除现有的IM图层
+    if (imLayer) {
+        map.removeLayer(imLayer);
+    }
+    
+    // 直接创建等值线图层
+    createContourLayer();
+    map.addLayer(imLayer);
+    
+    // 更新信息显示
+    updateCurrentInfo();
+    
+    loadingOverlay.classList.add('hidden');
+}
+
+// 创建等值线图层专用函数
+
+// 创建等值线图层
+function createContourLayer() {
+    // 创建等值线数据源
+    const contourSource = new ol.source.Vector();
+    
+    // 直接请求完整的散点数据用于等值线生成
+    fetchCompleteContourData()        
+    .then(dataPoints => {
+            if (dataPoints && dataPoints.length > 10) {
+                generateContours(dataPoints, contourSource);
+            }
+        })
+        .catch(error => {
+            console.error('获取等值线数据失败:', error);
+        });
+    
+    // 创建等值线图层
+    imLayer = new ol.layer.Vector({
+        source: contourSource,
+        style: function(feature) {
+            const level = feature.get('level');
+            const minValue = feature.get('minValue') || 0;
+            const maxValue = feature.get('maxValue') || 1;              return new ol.style.Style({
+                fill: new ol.style.Fill({
+                    color: getContourColor(level, minValue, maxValue, 0.8) // 填充适度透明
+                }),
+                stroke: new ol.style.Stroke({
+                    color: getContourColor(level, minValue, maxValue, 0.3), // 边界更透明，减少突兀感
+                    width: 0.1, // 更细的边界线，几乎不可见
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                })
+            });
+        }
+    });
+}
+
+// 获取完整的IM网格数据用于等值线生成（直接从后端网格数据）
+async function fetchCompleteContourData() {
+    try {
+        // 直接请求后端提取的IM网格数据
+        const response = await fetch(`/get_im_grid_data?city=${encodeURIComponent(currentCity)}&eq_i_rup=${currentRupture}&period_index=${currentPeriodIndex}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // 处理返回的网格数据
+        const dataPoints = [];
+        
+        if (data.grid_data && Array.isArray(data.grid_data)) {
+            data.grid_data.forEach(point => {
+                // 检查数据格式：[longitude, latitude, im_value]
+                if (Array.isArray(point) && point.length >= 3) {
+                    const [lon, lat, imValue] = point;
+                    
+                    // 检查数据有效性
+                    if (lon !== null && lat !== null && imValue !== null && 
+                        !isNaN(lon) && !isNaN(lat) && !isNaN(imValue) && imValue > 0) {
+                        dataPoints.push([lon, lat, imValue]);
+                    }
+                } else if (point.longitude !== undefined && point.latitude !== undefined && point.im_value !== undefined) {
+                    // 处理对象格式的数据
+                    const lon = point.longitude;
+                    const lat = point.latitude;
+                    const imValue = point.im_value;
+                    
+                    if (lon !== null && lat !== null && imValue !== null && 
+                        !isNaN(lon) && !isNaN(lat) && !isNaN(imValue) && imValue > 0) {
+                        dataPoints.push([lon, lat, imValue]);
+                    }
+                }
+            });        
+            }
+        
+        return removeDuplicatePoints(dataPoints);
+        
+    } catch (error) {
+        console.error('获取IM网格数据失败:', error);
+        return [];
+    }
+}
+
+// 去除重复数据点
+function removeDuplicatePoints(points) {
+    const uniquePoints = [];
+    const seen = new Set();
+    
+    points.forEach(point => {
+        const key = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniquePoints.push(point);
+        }
+    });
+      return uniquePoints;
+}
+
+// 使用 d3-contour 生成等值线（优化版本，适合网格数据）
+function generateContours(dataPoints, contourSource) {
+    // 计算数据边界
+    const lons = dataPoints.map(d => d[0]);
+    const lats = dataPoints.map(d => d[1]);
+    const values = dataPoints.map(d => d[2]);
+    
+    const minLon = Math.min(...lons);
+    const maxLon = Math.max(...lons);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    
+    // 根据数据密度自适应调整网格大小
+    const dataSpread = Math.max(maxLon - minLon, maxLat - minLat);
+    const gridSize = Math.min(Math.max(Math.floor(dataSpread * 2000), 100), 300);
+    const width = gridSize;
+    const height = gridSize;
+    
+    // 创建插值网格
+    const gridData = new Array(width * height);
+    
+    // 优化的插值方法：针对网格数据使用更高效的插值
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const lon = minLon + (maxLon - minLon) * x / (width - 1);
+            const lat = minLat + (maxLat - minLat) * y / (height - 1);
+              // 对于网格数据，使用更精确的插值算法
+            let weightSum = 0;
+            let valueSum = 0;
+            let minDistance = Infinity;
+            let nearestValue = minValue;
+            
+            // 动态调整影响距离，基于数据密度
+            const avgSpacing = Math.sqrt((maxLon - minLon) * (maxLat - minLat) / dataPoints.length);
+            const maxDistance = Math.max(avgSpacing * 2.5, 0.01); // 增加影响范围，获得更平滑的插值
+            
+            dataPoints.forEach(point => {
+                // 使用球面距离计算（更精确）
+                const dLon = (point[0] - lon) * Math.cos((point[1] + lat) * Math.PI / 360);
+                const dLat = point[1] - lat;
+                const distance = Math.sqrt(dLon * dLon + dLat * dLat);
+                
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestValue = point[2];
+                }
+                
+                if (distance < 0.00001) { // 极其接近数据点
+                    gridData[y * width + x] = point[2];
+                    return;
+                } else if (distance < maxDistance) {
+                    // 使用改进的权重函数 - 高斯样条混合函数，产生更平滑的结果
+                    const normalizedDistance = distance / maxDistance;
+                    
+                    // 使用高斯权重与三次样条的混合
+                    const gaussianWeight = Math.exp(-4 * normalizedDistance * normalizedDistance);
+                    const splineWeight = Math.pow(1 - normalizedDistance, 4);
+                    const weight = (gaussianWeight + splineWeight) * 0.5; // 混合权重
+                    
+                    if (weight > 0.001) { // 降低阈值以包含更多点
+                        weightSum += weight;
+                        valueSum += weight * point[2];
+                    }
+                }
+            });
+            
+            if (weightSum > 0) {
+                gridData[y * width + x] = valueSum / weightSum;
+            } else {
+                // 如果没有权重，使用最近邻值
+                gridData[y * width + x] = nearestValue;
+            }
+        }    }    // 生成等值线层次 - 使用固定数值范围（0-1），不依赖数据范围
+    const numLevels = 20; // 保持20层，实现平滑的视觉效果
+    const thresholds = [];
+    
+    // 固定数值范围：0为最低，1为最高
+    const fixedMinValue = 0.0;
+    const fixedMaxValue = 1.0;
+    
+    // 使用多段式分布：极低值区域很密集，中值区域密集，高值区域适中
+    for (let i = 1; i <= numLevels; i++) {
+        const ratio = i / (numLevels + 1);
+        
+        // 使用分段函数实现更平滑的分布
+        let adjustedRatio;
+        if (ratio < 0.3) {
+            // 前30%：使用平方根，让极低值区域非常密集
+            adjustedRatio = Math.sqrt(ratio / 0.3) * 0.15;
+        } else if (ratio < 0.7) {
+            // 中间40%：线性分布，平滑过渡
+            adjustedRatio = 0.15 + (ratio - 0.3) / 0.4 * 0.45;
+        } else {
+            // 后30%：使用立方根，让高值区域保持适度分布
+            adjustedRatio = 0.6 + Math.pow((ratio - 0.7) / 0.3, 0.7) * 0.4;
+        }
+        
+        const threshold = fixedMinValue + (fixedMaxValue - fixedMinValue) * adjustedRatio;
+        
+        // 确保最小阈值略大于0（避免完全透明的大片区域）
+        if (threshold > 0.02) {
+            thresholds.push(threshold);
+        }
+    }
+    
+    // 确保包含实际数据范围内的阈值
+    // 添加一些基于实际数据的阈值，但仍保持固定范围的主导地位
+    const actualDataThresholds = [];
+    if (minValue > 0) {
+        actualDataThresholds.push(minValue * 1.1); // 略高于最小值
+    }
+    if (maxValue < fixedMaxValue) {
+        actualDataThresholds.push(maxValue * 0.9); // 略低于最大值
+    }
+    
+    // 合并并排序所有阈值
+    const allThresholds = [...thresholds, ...actualDataThresholds].sort((a, b) => a - b);
+    
+    // 去重并限制阈值数量
+    const uniqueThresholds = [];
+    let lastThreshold = -1;
+    for (const threshold of allThresholds) {
+        if (threshold > lastThreshold + 0.01) { // 最小间隔0.01
+            uniqueThresholds.push(threshold);
+            lastThreshold = threshold;
+        }
+    }    
+    // 使用 d3-contour 生成等值线
+    const contours = d3.contours()
+        .size([width, height])
+        .thresholds(uniqueThresholds);
+    
+    const contourData = contours(gridData);
+    
+    // 转换等值线为 OpenLayers 要素
+    let featureCount = 0;
+    contourData.forEach(contour => {
+        const level = contour.value;
+        
+        // 将每个等值线路径转换为多边形
+        contour.coordinates.forEach(ring => {
+            ring.forEach(polygon => {
+                // 转换坐标回地理坐标
+                const coords = polygon.map(point => {
+                    const lon = minLon + (maxLon - minLon) * point[0] / (width - 1);
+                    const lat = minLat + (maxLat - minLat) * point[1] / (height - 1);
+                    return ol.proj.fromLonLat([lon, lat]);
+                });
+                
+                // 创建多边形要素
+                if (coords.length > 2) {
+                    const feature = new ol.Feature({
+                        geometry: new ol.geom.Polygon([coords]),
+                        level: level,
+                        minValue: minValue,
+                        maxValue: maxValue
+                    });
+                    contourSource.addFeature(feature);
+                    featureCount++;
+                }
+            });
+        });
+    });
+}
+
+// 创建震源矩形框图层
+async function createRuptureLayer() {
+    // 始终从API获取最新的震源几何数据
+    try {
+        ruptureGeometry = await fetchRuptureGeometry();
+    } catch (error) {
+        console.error('获取震源几何数据失败:', error);
+        return;
+    }
+    
+    const ruptureSource = new ol.source.Vector();
+    
+    // 如果有震源几何数据，创建矩形框要素
+    if (ruptureGeometry && ruptureGeometry.coordinates && ruptureGeometry.coordinates.length > 0) {        
+        try {
+            // 将震源几何数据转换为OpenLayers多边形
+            const coordinates = ruptureGeometry.coordinates[0]; // 取第一个环（外环）
+            const transformedCoords = coordinates.map(coord => ol.proj.fromLonLat([coord[0], coord[1]]));
+            
+            // 创建多边形要素
+            const ruptureFeature = new ol.Feature({
+                geometry: new ol.geom.Polygon([transformedCoords]),
+                rupture_index: currentRupture,
+                type: 'rupture'
+            });
+            
+            ruptureSource.addFeature(ruptureFeature);        
+            } 
+            catch (error) {
+            console.error('创建震源矩形框失败:', error);
+        }
+    }
+    
+    // 创建震源图层
+    ruptureLayer = new ol.layer.Vector({
+        source: ruptureSource,
+        style: new ol.style.Style({
+            fill: new ol.style.Fill({
+                color: 'rgba(255, 255, 0, 0.1)' // 黄色半透明填充
+            }),
+            stroke: new ol.style.Stroke({
+                color: '#ff0000', // 红色边框
+                width: 2,
+                lineDash: [5, 5] // 虚线样式
+            })
+        }),
+        zIndex: 1000 // 确保震源图层在最上层
+    });
+    
+    // 添加到地图
+    map.addLayer(ruptureLayer);
+}
+
+// 获取震源几何数据
+async function fetchRuptureGeometry() {
+    try {
+        // 请求震源几何数据
+        const response = await fetch(`/get_city_all_ruptures/${encodeURIComponent(currentCity)}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // 找到对应破裂面的几何数据
+        if (data.data && Array.isArray(data.data)) {
+            for (const rupture of data.data) {
+                if (rupture.parameters.rupture_index === currentRupture) {
+                    
+                    // 转换坐标格式：从 (lat, lon) 转换为 [lon, lat]
+                    const coordinates = rupture.latlon_polygon.map(point => {
+                        // 处理元组格式的坐标点
+                        if (Array.isArray(point) && point.length >= 2) {
+                            return [point[1], point[0]]; // [lon, lat]
+                        } else if (point.length === 2) {
+                            // 处理其他可能的格式
+                            return [point[1], point[0]];
+                        }                        
+                        return point;
+                    });
+                    
+                    // 转换为GeoJSON格式
+                    const geometry = {
+                        type: 'Polygon',
+                        coordinates: [coordinates]
+                    };
+                    
+                    return geometry;
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error('获取震源几何数据失败:', error);
+        return null;
+    }
+}
+
+// 根据等值线层次获取颜色（固定数值范围，不标准化）
+function getContourColor(level, minValue, maxValue, baseAlpha = 1.0) {
+    // 使用固定数值范围：0为最低，1为最高
+    const fixedMaxValue = 1.0; // 固定最大值为1
+    const fixedMinValue = 0.0; // 固定最小值为0
+    
+    // 基于固定范围计算归一化值
+    const normalizedLevel = Math.max(0, Math.min(1, (level - fixedMinValue) / (fixedMaxValue - fixedMinValue)));
+    
+    // 使用更精细的值截断，避免极端值
+    const clampedLevel = Math.max(0.001, Math.min(1.0, normalizedLevel));
+    
+    // 自适应透明度 - 实现从几乎透明到半透明的平滑过渡
+    let adaptiveAlpha;
+    if (clampedLevel < 0.05) {
+        // 极低值：几乎透明 (0.02 - 0.1)
+        adaptiveAlpha = 0.02 + clampedLevel * 1.6; // 0.02到0.1
+    } else if (clampedLevel < 0.3) {
+        // 低值：平滑增加透明度 (0.1 - 0.25)
+        adaptiveAlpha = 0.1 + (clampedLevel - 0.05) * 0.6; // 0.1到0.25
+    } else if (clampedLevel < 0.7) {
+        // 中等值：继续平滑增加 (0.25 - 0.4)
+        adaptiveAlpha = 0.25 + (clampedLevel - 0.3) * 0.375; // 0.25到0.4
+    } else {
+        // 高值：对数增长，保持一定透明度 (0.4 - 0.55)
+        const highRatio = (clampedLevel - 0.7) / 0.3;
+        adaptiveAlpha = 0.4 + Math.log(1 + highRatio * 9) / Math.log(10) * 0.15; // 0.4到0.55
+    }
+    adaptiveAlpha = adaptiveAlpha * baseAlpha;
+    
+    // 如果透明度过低，直接返回透明
+    if (adaptiveAlpha < 0.015) {
+        return 'rgba(0, 0, 0, 0)';
+    }
+    
+    // 连续颜色插值 - 使用优化的红色单色渐变
+    // 实现从无色 -> 浅粉红 -> 鲜红 -> 深红的平滑过渡
+    
+    // 使用分段式HSV参数，实现更自然的颜色过渡
+    const hue = 0; // 固定为红色
+    
+    let saturation, value;
+    
+    if (clampedLevel < 0.2) {
+        // 极低值：从无色到浅粉红
+        saturation = clampedLevel * 2.5; // 0到0.5
+        value = 0.98 - clampedLevel * 0.1; // 0.98到0.96，保持很高亮度
+    } else if (clampedLevel < 0.6) {
+        // 中低值：从浅粉红到鲜红
+        const ratio = (clampedLevel - 0.2) / 0.4;
+        saturation = 0.5 + ratio * 0.4; // 0.5到0.9
+        value = 0.96 - ratio * 0.25; // 0.96到0.71
+    } else {
+        // 高值：从鲜红到深红
+        const ratio = (clampedLevel - 0.6) / 0.4;
+        saturation = 0.9 + ratio * 0.1; // 0.9到1.0，保持高饱和度
+        value = 0.71 - ratio * 0.15; // 0.71到0.56，适度降低亮度
+    }
+    
+    // HSV转RGB
+    const rgb = hsvToRgb(hue, saturation, value);
+    
+    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${adaptiveAlpha})`;
+}
+
+// HSV转RGB辅助函数
+function hsvToRgb(h, s, v) {
+    h = h / 60;
+    const c = v * s;
+    const x = c * (1 - Math.abs((h % 2) - 1));
+    const m = v - c;
+    
+    let rgb;
+    if (h >= 0 && h < 1) {
+        rgb = [c, x, 0];
+    } else if (h >= 1 && h < 2) {
+        rgb = [x, c, 0];
+    } else if (h >= 2 && h < 3) {
+        rgb = [0, c, x];
+    } else if (h >= 3 && h < 4) {
+        rgb = [0, x, c];
+    } else if (h >= 4 && h < 5) {
+        rgb = [x, 0, c];
+    } else {
+        rgb = [c, 0, x];
+    }
+    
+    return [
+        Math.round((rgb[0] + m) * 255),
+        Math.round((rgb[1] + m) * 255),
+        Math.round((rgb[2] + m) * 255)
+    ];
+}
+
+// 更新当前信息显示
+function updateCurrentInfo() {
+    // 更新周期信息
+    if (imMetadata && imMetadata.periods && imMetadata.periods[currentPeriodIndex]) {
+        const periodValue = imMetadata.periods[currentPeriodIndex].period_value;
+        document.getElementById('currentPeriodValue').textContent = periodValue.toFixed(2);
+    } else {
+        document.getElementById('currentPeriodValue').textContent = currentPeriodIndex;
+    }
+    
+    // 更新震源信息
+    if (imMetadata && imMetadata.ruptures && imMetadata.ruptures[currentRupture]) {
+        const magnitude = imMetadata.ruptures[currentRupture].magnitude;
+        document.getElementById('currentRuptureValue').textContent = `${currentRupture} (M${magnitude.toFixed(1)})`;
+    } else {
+        document.getElementById('currentRuptureValue').textContent = currentRupture;
+    }
+}
+
+// 更新IM地图
+function updateIMMap() {
+    const newRupture = parseInt(document.getElementById('eq_i_rup').value);
+    const newPeriodIndex = parseInt(document.getElementById('period_index').value);
+    if (newRupture !== currentRupture || newPeriodIndex !== currentPeriodIndex) {
+        const oldRupture = currentRupture;
+        currentRupture = newRupture;
+        currentPeriodIndex = newPeriodIndex;
+        
+        // 重新加载数据
+        loadIMData();
+        
+        // 如果震源发生变化，需要更新震源矩形框
+        if (oldRupture !== currentRupture) {
+            updateRuptureGeometry();
+        }
+        
+        updateCurrentInfo();
+        
+        // 更新URL
+        const newUrl = new URL(window.location);
+        newUrl.searchParams.set('eq_i_rup', currentRupture);
+        newUrl.searchParams.set('period_index', currentPeriodIndex);
+        window.history.pushState({}, '', newUrl);
+    }
+}
+
+// 更新震源矩形框几何数据
+async function updateRuptureGeometry() {
+    try {
+        // 清除现有的震源图层
+        if (ruptureLayer) {
+            map.removeLayer(ruptureLayer);
+        }
+        
+        // 重新创建震源图层（会自动获取最新的几何数据）
+        await createRuptureLayer();
+        
+    } catch (error) {
+        console.error('更新震源矩形框失败:', error);
+    }
+}
+
+// 返回震源选择页面
+function backToRuptureSelection() {
+    const url = `/rupture_selection?city=${encodeURIComponent(currentCity)}`;
+    window.location.href = url;
+}
+
+// 返回首页
+function backToIndex() {
+    window.location.href = '/';
+}
+
+// 页面加载完成后初始化地图
+document.addEventListener('DOMContentLoaded', async function() {
+    await initializeMap();
+});
+</script>
+{% endblock %}

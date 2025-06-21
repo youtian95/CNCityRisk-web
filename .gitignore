@@ -49,6 +49,6 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-CNCityRiskWeb/static/maps/*.7z
+CNCityRiskWeb/static/maps/*
 
 cncityrisk.tar

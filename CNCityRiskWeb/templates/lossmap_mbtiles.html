@@ -1,0 +1,567 @@
+{% extends 'base.html' %}
+
+{% block head %}
+
+{{ super() }}
+<!-- OpenLayers CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+<!-- OpenLayers JavaScript -->
+<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<script src="{{ url_for('static', filename='map-styles.js') }}"></script>
+
+<style>
+.map-container {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+}
+
+#map {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+}
+
+.SelectionPanelContainer-lossmap {
+    width: 210px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+}
+
+.SelectionPanelContainer-lossmap .SelectionPanel {
+    width: 100%;
+    text-align: left;
+    margin: 0px;
+    padding: 15px;
+    border: none;
+    background-color: transparent;
+}
+
+.SelectionPanelContainer-lossmap #eqInfo {
+    width: 100%;
+    margin: 10px 0 0 0;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;    background-color: #f8f9fa;
+}
+
+.SelectionPanelContainer-lossmap .EQsource {
+    width: 100%;
+}
+
+.SelectionPanelContainer-lossmap .EQsource h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+    font-size: 16px;
+}
+
+.SelectionPanelContainer-lossmap label {
+    font-weight: bold;
+    color: #555;
+    margin-top: 8px;
+    display: inline-block;
+}
+
+.SelectionPanelContainer-lossmap input,
+.SelectionPanelContainer-lossmap select {
+    margin: 5px 0 10px 0;
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.SelectionPanelContainer-lossmap button {
+    margin: 5px 5px 0 0;
+    padding: 8px 12px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-block;
+}
+
+.SelectionPanelContainer-lossmap button:hover {
+    background-color: #0056b3;
+}
+
+/* 返回震源选择按钮 */
+.SelectionPanelContainer-lossmap button:nth-child(2) {
+    background-color: #28a745;
+}
+
+.SelectionPanelContainer-lossmap button:nth-child(2):hover {
+    background-color: #1e7e34;
+}
+
+/* 返回首页按钮 */
+.SelectionPanelContainer-lossmap button:last-child {
+    background-color: #6c757d;
+}
+
+.SelectionPanelContainer-lossmap button:last-child:hover {
+    background-color: #545b62;
+}
+
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(240, 240, 240, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.loading-content {
+    text-align: center;
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.loading-spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 2s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.hidden {
+    display: none !important;
+}
+
+.map-legend {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    font-size: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin: 3px 0;
+}
+
+.legend-color {
+    width: 20px;
+    height: 15px;
+    margin-right: 8px;
+    border: 1px solid #ccc;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="map-container">
+    <!-- 加载状态 -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <h2>正在加载地图数据...</h2>
+            <div class="loading-spinner"></div>
+            <p>请稍候， 数据传输中...</p>
+        </div>
+    </div>
+    <!-- 地图容器 -->
+    <div id="map" class="map"></div>      
+    <!-- 图例 -->
+    <div class="map-legend">
+        <h4 style="margin: 0 0 10px 0;">损失等级</h4>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: rgba(0, 100, 255, 0.9);"></div>
+            <span>0 - 无损失</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: rgba(255, 237, 160, 1.0);"></div>
+            <span>1 - 轻微损失</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: rgba(254, 217, 118, 1.0);"></div>
+            <span>2 - 中等损失</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: rgba(253, 141, 60, 1.0);"></div>
+            <span>3 - 严重损失</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: rgba(240, 59, 32, 1.0);"></div>
+            <span>4 - 完全损失</span>
+        </div>
+    </div>
+    
+    <!-- 控制面板 -->
+    <div class="SelectionPanelContainer-lossmap">
+        <div class="SelectionPanel">
+            <form id="mapForm">
+                <div class="SelectionPanelForRupture">
+                    <label for="eq_i_rup">震源索引:</label>
+                    <input type="number" id="eq_i_rup" name="eq_i_rup" value="{{ eq_i_rup }}" min="0" style="width: 60px;">
+                    
+                    <br>
+                    <label for="LossType">损失类型:</label>
+                    <select id="LossType" name="LossType">
+                        <option value="DS_Struct" {% if LossType == 'DS_Struct' %}selected{% endif %}>结构损失</option>
+                        <option value="DS_NonStruct" {% if LossType == 'DS_NonStruct' %}selected{% endif %}>非结构损失</option>
+                        <option value="DS_Content" {% if LossType == 'DS_Content' %}selected{% endif %}>内容损失</option>                    
+                    </select>
+                    
+                    <br>
+                    <button type="button" onclick="updateMap()">更新地图</button>
+                    <button type="button" onclick="backToRuptureSelection()">返回震源选择</button>
+                    <button type="button" onclick="backToIndex()">返回首页</button>
+                </div>
+            </form>
+        </div>
+
+        <div id="eqInfo" class="hidden">
+            <div class="EQsource">
+                <h3>地震震源信息</h3>
+                <div id="eqDetails"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 全局变量
+let map;
+let vectorLayer;
+let currentCity = '{{ current_city }}';
+
+// 使用地理坐标系（经纬度）
+ol.proj.useGeographic();
+
+// 初始化地图
+function initMap() {
+    const centerLon = 113.906250;
+    const centerLat = 30.747487;      
+    const center = [centerLon, centerLat];
+    map = new ol.Map({
+        target: 'map',
+        layers: [
+            // 使用统一的地图样式配置
+            MapStyles.createOpenLayersLayer()
+        ],
+        view: new ol.View({
+            center: center,
+            zoom: 10, // 降低缩放级别以看到更大范围            
+            minZoom: 6,
+            maxZoom: 18
+        })
+    });
+
+    // 添加底图切换控件
+    const styleControl = MapStyles.createOpenLayersStyleControl(map);
+    map.addControl(styleControl);
+
+    loadMapData();
+    // 添加点击事件处理器
+    map.on('singleclick', function(evt) {
+        const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+            return feature;
+        });
+        
+        if (feature) {
+            const properties = feature.getProperties();
+            showPopup(evt.coordinate, properties);
+        }
+    });
+
+    // 添加鼠标悬停效果
+    map.on('pointermove', function(evt) {
+        const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+            return feature;
+        });
+        
+        map.getTargetElement().style.cursor = feature ? 'pointer' : '';
+    });
+}
+
+// 显示弹窗
+function showPopup(coordinate, properties) {
+    // 移除现有弹窗
+    const existingPopup = document.getElementById('popup');
+    if (existingPopup) {
+        existingPopup.remove();
+    }
+    // 处理loss_value - 直接解析特殊格式 (35:0,0,0,0,1,0,...)
+    let displayLossValue = properties.loss_value;
+    
+    try {
+        const content = displayLossValue.slice(1, -1); // 移除括号
+        const parts = content.split(':');
+        if (parts.length === 2) {
+            const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
+            const currentRupIndex = parseInt(document.getElementById('eq_i_rup').value || '0');
+            displayLossValue = currentRupIndex < valuesArray.length ? valuesArray[currentRupIndex] : valuesArray[0];
+        }
+    } catch (e) {
+        // 解析失败，使用原值
+    }
+    
+    // 创建弹窗内容
+    let popupContent = '<div style="background: white; padding: 10px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); min-width: 200px;"><strong>建筑物损失信息</strong><br>';
+    if (properties.id) popupContent += `<strong>ID:</strong> ${properties.id}<br>`;
+    popupContent += `<strong>损失等级:</strong> ${displayLossValue}<br>`;
+    if (properties.structure) popupContent += `<strong>结构类型:</strong> ${properties.structure}<br>`;
+    if (properties.story) popupContent += `<strong>楼层数:</strong> ${properties.story}<br>`;
+    if (properties.DistrictName) popupContent += `<strong>区域:</strong> ${properties.DistrictName}<br>`;
+    
+    popupContent += '</div>';
+
+    // 创建弹窗元素
+    const popupElement = document.createElement('div');
+    popupElement.id = 'popup';
+    popupElement.innerHTML = popupContent;
+
+    // 创建OpenLayers覆盖层
+    const popup = new ol.Overlay({
+        element: popupElement,
+        positioning: 'bottom-center',
+        stopEvent: false,
+        offset: [0, -10]
+    });
+
+    map.addOverlay(popup);
+    popup.setPosition(coordinate);
+
+    // 3秒后自动关闭弹窗
+    setTimeout(() => {
+        map.removeOverlay(popup);
+        popupElement.remove();
+    }, 3000);
+}
+
+// 加载地图数据
+function loadMapData() {
+    const formData = new FormData(document.getElementById('mapForm'));
+    const params = new URLSearchParams();
+    
+    params.append('city', currentCity);
+    params.append('eq_i_rup', formData.get('eq_i_rup') || '{{ eq_i_rup }}');
+    params.append('LossType', formData.get('LossType') || '{{ LossType }}');
+    params.append('use_mbtiles', 'true');
+
+    document.getElementById('loadingOverlay').classList.remove('hidden');
+
+    fetch('/get_map_data?' + params.toString())        
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            
+            if (data.error) {
+                alert('错误: ' + data.error);
+                return;
+            }            
+            if (data.use_mbtiles && data.tile_url) {
+                addVectorTileLayer(data.tile_url, data.bounds);
+            } else {
+                alert('服务器响应中缺少瓦片URL');
+            }            
+            // 显示地震信息
+            if (data.eq_info && Object.keys(data.eq_info).length > 0) {
+                displayEQInfo(data.eq_info);
+            }
+        })
+        .catch(error => {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            alert('加载地图数据失败: ' + error.message);
+        });
+}
+
+// 添加矢量瓦片图层
+function addVectorTileLayer(tileUrl, bounds) {
+    
+    // 移除现有的矢量图层
+    if (vectorLayer) {
+        map.removeLayer(vectorLayer);
+    }    
+    // 创建矢量瓦片源
+    const vectorSource = new ol.source.VectorTile({
+        format: new ol.format.MVT(),
+        url: tileUrl,
+        maxZoom: 16,
+        minZoom: 8
+    });
+    // 创建样式函数
+    const styleFunction = function(feature) {
+        try {
+            const properties = feature.getProperties();
+            
+            // 获取loss_value并解析特殊格式 (35:0,0,0,0,1,0,...)
+            let lossValue = properties.loss_value;
+            if (typeof lossValue === 'string' && lossValue.startsWith('(') && lossValue.includes(':')) {
+                const content = lossValue.slice(1, -1); // 移除括号
+                const parts = content.split(':');
+                if (parts.length === 2) {
+                    const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
+                    const currentRupIndex = parseInt(document.getElementById('eq_i_rup').value || '0');
+                    lossValue = currentRupIndex < valuesArray.length ? valuesArray[currentRupIndex] : valuesArray[0];
+                }
+            }
+            
+            let fillColor, strokeColor;
+            const lossNum = Number(lossValue);
+            
+            switch(lossNum) {
+                case 0: 
+                    fillColor = 'rgba(0, 100, 255, 0.7)';   // 蓝色 - 无损失
+                    strokeColor = 'rgba(0, 100, 255, 1.0)';
+                    break;  
+                case 1: 
+                    fillColor = 'rgba(255, 237, 160, 1.0)'; // 浅黄 - 轻微损失
+                    strokeColor = '#e6d000';
+                    break;  
+                case 2: 
+                    fillColor = 'rgba(254, 217, 118, 1.0)'; // 橙黄 - 中等损失
+                    strokeColor = '#ff9900';
+                    break;  
+                case 3: 
+                    fillColor = 'rgba(253, 141, 60, 1.0)';  // 橙色 - 严重损失
+                    strokeColor = '#ff6600';
+                    break;  
+                case 4: 
+                    fillColor = 'rgba(240, 59, 32, 1.0)';   // 红色 - 完全损失
+                    strokeColor = '#cc0000';
+                    break;  
+                default: 
+                    fillColor = 'rgba(255, 0, 255, 0.9)';   // 洋红色 - 未知
+                    strokeColor = '#ff00ff';
+            }
+              return new ol.style.Style({
+                fill: new ol.style.Fill({
+                    color: fillColor
+                }),
+                stroke: new ol.style.Stroke({
+                    color: strokeColor,
+                    width: 1
+                })
+            });
+        } catch (error) {
+            return new ol.style.Style({
+                fill: new ol.style.Fill({ color: 'rgba(255, 0, 0, 0.8)' }),
+                stroke: new ol.style.Stroke({ color: '#ff0000', width: 2 })
+            });
+        }
+    };
+    
+    // 创建矢量瓦片图层
+    vectorLayer = new ol.layer.VectorTile({
+        source: vectorSource,
+        style: styleFunction    
+    });
+
+    map.addLayer(vectorLayer);    
+    // 使用MBTiles元数据的精确边界调整地图视图
+    if (bounds && bounds.length === 4) {
+        map.getView().fit(bounds, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 16
+        });
+    } else {
+        // 使用默认边界
+        const metadataBounds = [113.7081142, 29.9695723, 115.0815567, 31.3529616];
+        map.getView().fit(metadataBounds, {
+            padding: [50, 50, 50, 50],
+            maxZoom: 16,
+            duration: 1000
+        });
+    }
+}
+
+
+// 显示地震信息
+function displayEQInfo(eqInfo) {
+    const eqDetails = document.getElementById('eqDetails');
+    let html = '';
+    
+    for (const [key, value] of Object.entries(eqInfo)) {
+        html += `<strong>${key}:</strong> ${value}<br>`;
+    }
+    
+    eqDetails.innerHTML = html;
+    document.getElementById('eqInfo').classList.remove('hidden');
+}
+
+// 更新地图
+function updateMap() {
+    loadMapData();
+}
+
+// 返回首页
+function backToIndex() {
+    window.location.href = '/';
+}
+
+// 返回震源选择界面
+function backToRuptureSelection() {
+    window.location.href = `/rupture_selection?city=${encodeURIComponent(currentCity)}`;
+}
+
+// 当震源索引变化时重新渲染地图
+function onRupIndexChange() {
+    // 重新应用样式到所有要素
+    if (vectorLayer && vectorLayer.getSource()) {
+        const source = vectorLayer.getSource();
+        source.forEachFeature(function(feature) {
+            feature.changed(); // 触发要素重新渲染
+        });
+        vectorLayer.changed(); // 触发图层重新渲染
+    }
+    
+    // 移除现有弹窗（如果有的话）
+    const existingPopup = document.getElementById('popup');
+    if (existingPopup) {
+        existingPopup.remove();
+    }
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 添加震源索引变化监听器
+    const rupIndexInput = document.getElementById('eq_i_rup');
+    if (rupIndexInput) {
+        rupIndexInput.addEventListener('input', onRupIndexChange);
+        rupIndexInput.addEventListener('change', onRupIndexChange);
+    }
+    
+    initMap();
+});
+</script>
+{% endblock %}
