@@ -145,36 +145,72 @@ for city in city_list:
     Province_City_District[province][city] = get_district_list(city)
 
 
-def get_city_coordinates():
+def get_city_coordinates(city_name=None):
     """
-    获取所有可用城市的地理坐标数据
+    获取城市的地理坐标数据
     使用 CNCityRisk.Utilities.get_city_polygon 函数获取真实的城市边界数据
+    
+    Args:
+        city_name (str, optional): 指定城市名称。如果为None，返回所有城市的坐标数据
+        
+    Returns:
+        dict: 城市坐标数据字典
+            - 如果指定了city_name，返回 {city_name: {center, bounds, coordinates}}
+            - 如果city_name为None，返回 {city1: {center, bounds, coordinates}, city2: {...}, ...}
     """
     try:
         city_coordinates = {}
         
-        # 获取所有可用城市
-        for province, cities in Province_City_District.items():
-            for city in cities.keys():
-                try:
-                    # 调用CNCityRisk.Utilities.get_city_polygon函数
-                    polygon = CNCityRisk.Utilities.get_city_polygon(city)
-                    if polygon:
-                        # 处理Shapely几何对象
-                        city_data = convert_shapely_to_leaflet_format(polygon)
-                        if city_data:
-                            city_coordinates[city] = city_data
-                except Exception as e:
-                    print(f"Error getting polygon for {city}: {e}")
-                    continue
+        # 如果指定了城市名，只获取该城市的数据
+        if city_name:
+            # 检查城市是否存在
+            city_exists = False
+            for province, cities in Province_City_District.items():
+                if city_name in cities.keys():
+                    city_exists = True
+                    break
+            
+            if not city_exists:
+                print(f"City '{city_name}' not found in available cities")
+                return {}
+            
+            try:
+                # 调用CNCityRisk.Utilities.get_city_polygon函数
+                polygon = CNCityRisk.Utilities.get_city_polygon(city_name)
+                if polygon:
+                    # 处理Shapely几何对象
+                    city_data = convert_shapely_to_leaflet_format(polygon)
+                    if city_data:
+                        city_coordinates[city_name] = city_data
+                    else:
+                        print(f"Failed to convert polygon data for {city_name}")
+                else:
+                    print(f"No polygon data found for {city_name}")
+            except Exception as e:
+                print(f"Error getting polygon for {city_name}: {e}")
+                return {}
+        else:
+            # 获取所有可用城市
+            for province, cities in Province_City_District.items():
+                for city in cities.keys():
+                    try:
+                        # 调用CNCityRisk.Utilities.get_city_polygon函数
+                        polygon = CNCityRisk.Utilities.get_city_polygon(city)
+                        if polygon:
+                            # 处理Shapely几何对象
+                            city_data = convert_shapely_to_leaflet_format(polygon)
+                            if city_data:
+                                city_coordinates[city] = city_data
+                    except Exception as e:
+                        print(f"Error getting polygon for {city}: {e}")
+                        continue
         
-        if city_coordinates:
-            return city_coordinates
+        return city_coordinates
         
     except Exception as e:
         print(f"Error using CNCityRisk.Utilities.get_city_polygon: {e}")
     
-    return city_coordinates
+    return {}
 
 def convert_shapely_to_leaflet_format(polygon):
     """

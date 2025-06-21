@@ -7,7 +7,11 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
 <!-- OpenLayers JavaScript -->
 <script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<!-- D3.js for contour generation -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://d3js.org/d3-contour.v4.min.js"></script>
 <script src="{{ url_for('static', filename='map-styles.js') }}"></script>
+<script src="{{ url_for('static', filename='map-common.js') }}"></script>
 
 <style>
 .map-container {
@@ -80,6 +84,12 @@
     padding: 5px;
     border: 1px solid #ddd;
     border-radius: 4px;
+}
+
+.SelectionPanelContainer-lossmap input[readonly] {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    cursor: not-allowed;
 }
 
 .SelectionPanelContainer-lossmap button {
@@ -194,7 +204,7 @@
         </div>
     </div>
     <!-- 地图容器 -->
-    <div id="map" class="map"></div>      
+    <div id="map" class="map"></div>        
     <!-- 图例 -->
     <div class="map-legend">
         <h4 style="margin: 0 0 10px 0;">损失等级</h4>
@@ -218,6 +228,30 @@
             <div class="legend-color" style="background-color: rgba(240, 59, 32, 1.0);"></div>
             <span>4 - 完全损失</span>
         </div>
+        <h4 style="margin: 15px 0 10px 0;">IM强度等值线</h4>
+        <div style="width: 150px; height: 20px; background: linear-gradient(to right, 
+            rgba(255, 255, 255, 0.02) 0%,
+            rgba(255, 220, 220, 0.1) 15%,
+            rgba(255, 180, 180, 0.25) 30%,
+            rgba(255, 120, 120, 0.4) 50%,
+            rgba(220, 80, 80, 0.5) 70%,
+            rgba(180, 40, 40, 0.55) 85%,
+            rgba(140, 20, 20, 0.55) 100%
+        ); border: 1px solid #ccc; margin: 5px 0;"></div>
+        <div style="display: flex; justify-content: space-between; width: 150px; font-size: 10px;">
+            <span>0</span>
+            <span>0.5</span>
+            <span>1.0+</span>
+        </div>
+        <div style="font-size: 11px; color: #666; margin: 5px 0;">
+            当前周期: <span id="currentPeriodDisplay">0.01s</span>
+        </div>
+        
+        <h4 style="margin: 15px 0 10px 0;">震源范围</h4>
+        <div class="legend-item">
+            <div style="width: 20px; height: 10px; border: 2px dashed #ff0000; background-color: rgba(255, 255, 0, 0.1); margin-right: 5px;"></div>
+            <span>震源轮廓</span>
+        </div>
     </div>
     
     <!-- 控制面板 -->
@@ -227,14 +261,23 @@
                 <div class="SelectionPanelForRupture">
                     <label for="eq_i_rup">震源索引:</label>
                     <input type="number" id="eq_i_rup" name="eq_i_rup" value="{{ eq_i_rup }}" min="0" style="width: 60px;">
-                    
-                    <br>
+                    <br>                    
                     <label for="LossType">损失类型:</label>
                     <select id="LossType" name="LossType">
                         <option value="DS_Struct" {% if LossType == 'DS_Struct' %}selected{% endif %}>结构损失</option>
                         <option value="DS_NonStruct" {% if LossType == 'DS_NonStruct' %}selected{% endif %}>非结构损失</option>
-                        <option value="DS_Content" {% if LossType == 'DS_Content' %}selected{% endif %}>内容损失</option>                    
+                        <option value="DS_Content" {% if LossType == 'DS_Content' %}selected{% endif %}>内容损失</option>                      
+                        </select>
+                    <br>
+                    <label for="period_index">IM周期:</label>
+                    <select id="period_index" name="period_index">
+                        <!-- 将通过JavaScript动态填充 -->
                     </select>
+                    <br>
+                    <div style="font-size: 14px; color: #333; margin: 8px 0;">
+                        第<span id="simIndexDisplay">{{ iSim|default(0)|int + 1 }}</span>次随机模拟
+                    </div>
+                    <input type="hidden" id="iSim" name="iSim" value="{{ iSim|default(0) }}">
                     
                     <br>
                     <button type="button" onclick="updateMap()">更新地图</button>
@@ -256,26 +299,54 @@
 <script>
 // 全局变量
 let map;
-let vectorLayer;
+let vectorLayer; // 建筑群损失图层
+let contourLayer; // IM等值线图层
+let ruptureLayer; // 震源轮廓图层
 let currentCity = '{{ current_city }}';
+let currentRupture = parseInt('{{ eq_i_rup }}' || '0');
+let currentISim = parseInt('{{ iSim|default(0) }}');
+let currentPeriodIndex = 0; // 默认使用周期索引0
+let imMetadata = null; // 存储IM元数据
 
 // 使用地理坐标系（经纬度）
 ol.proj.useGeographic();
 
+// 设置 map-common.js 使用地理坐标系
+setGeographicMode(true);
+
 // 初始化地图
-function initMap() {
-    const centerLon = 113.906250;
-    const centerLat = 30.747487;      
-    const center = [centerLon, centerLat];
+async function initMap() {
+    // 获取城市中心坐标
+    let centerCoords = [114.3055, 30.5928]; // 默认武汉坐标
+    let initialZoom = 10;
+    
+    try {
+        const response = await fetch(`/get_city_coordinates?city=${encodeURIComponent(currentCity)}`);
+        const cityData = await response.json();
+        if (cityData.center) {
+            // 转换坐标格式：[纬度, 经度] -> [经度, 纬度]
+            centerCoords = [cityData.center[1], cityData.center[0]];
+        }
+        if (cityData.bounds) {
+            // 根据城市边界计算合适的缩放级别
+            const latDiff = Math.abs(cityData.bounds[2][0] - cityData.bounds[0][0]);
+            const lonDiff = Math.abs(cityData.bounds[2][1] - cityData.bounds[0][1]);
+            const maxDiff = Math.max(latDiff, lonDiff);
+            if (maxDiff > 2) initialZoom = 8;
+            else if (maxDiff > 1) initialZoom = 9;
+            else if (maxDiff > 0.5) initialZoom = 10;
+            else initialZoom = 11;
+        }
+    } catch (error) {
+        console.error('获取城市坐标失败，使用默认坐标:', error);
+    }
+    
     map = new ol.Map({
         target: 'map',
-        layers: [
-            // 使用统一的地图样式配置
-            MapStyles.createOpenLayersLayer()
-        ],
+        layers: [MapStyles.createOpenLayersLayer()],
         view: new ol.View({
-            center: center,
-            zoom: 10, // 降低缩放级别以看到更大范围            
+            center: centerCoords,
+            zoom: initialZoom,
             minZoom: 6,
             maxZoom: 18
         })
@@ -283,48 +354,131 @@ function initMap() {
 
     // 添加底图切换控件
     const styleControl = MapStyles.createOpenLayersStyleControl(map);
-    map.addControl(styleControl);
-
+    map.addControl(styleControl);    // 初始化所有图层
+    await loadIMMetadata(); // 先加载IM元数据
+    initializePeriodSelector(); // 初始化周期选择器
+    updateCurrentPeriodDisplay(); // 更新周期显示
+    await createRuptureLayerLocal();
+    await createContourLayerLocal();
+    
+    // 加载建筑群损失数据
     loadMapData();
+    
     // 添加点击事件处理器
-    map.on('singleclick', function(evt) {
-        const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
-            return feature;
-        });
-        
-        if (feature) {
-            const properties = feature.getProperties();
-            showPopup(evt.coordinate, properties);
-        }
-    });
-
-    // 添加鼠标悬停效果
-    map.on('pointermove', function(evt) {
-        const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
-            return feature;
-        });
-        
-        map.getTargetElement().style.cursor = feature ? 'pointer' : '';
-    });
+    map.on('singleclick', handleMapClick);    map.on('pointermove', handleMapHover);
 }
 
-// 显示弹窗
-function showPopup(coordinate, properties) {
+// 加载IM元数据
+async function loadIMMetadata() {
+    try {
+        const response = await fetch(`/IMMap?city=${encodeURIComponent(currentCity)}&eq_i_rup=${currentRupture}&period_index=0`);
+        const html = await response.text();
+        
+        // 从HTML中提取IM元数据
+        const metadataMatch = html.match(/imMetadata\s*=\s*({.*?});/s);
+        if (metadataMatch) {
+            imMetadata = JSON.parse(metadataMatch[1]);
+        }
+    } catch (error) {
+        console.error('加载IM元数据失败:', error);
+        // 使用默认元数据
+        imMetadata = {
+            periods: {
+                0: { period_value: 0.01 },
+                1: { period_value: 0.02 },
+                2: { period_value: 0.03 }
+            }
+        };
+    }
+}
+
+// 初始化周期选择器
+function initializePeriodSelector() {
+    const periodSelect = document.getElementById('period_index');
+    periodSelect.innerHTML = '';
+    
+    if (imMetadata && imMetadata.periods) {
+        // 确保周期按索引排序
+        const sortedPeriodKeys = Object.keys(imMetadata.periods).sort((a, b) => parseInt(a) - parseInt(b));
+        
+        sortedPeriodKeys.forEach(periodIdx => {
+            const period = imMetadata.periods[periodIdx];
+            const option = document.createElement('option');
+            option.value = periodIdx;
+            option.text = `${period.period_value.toFixed(2)}s (索引${periodIdx})`;
+            if (parseInt(periodIdx) === currentPeriodIndex) {
+                option.selected = true;
+            }
+            periodSelect.appendChild(option);
+        });
+        
+        // 验证当前选择的周期是否有效
+        if (!imMetadata.periods[currentPeriodIndex]) {
+            currentPeriodIndex = parseInt(sortedPeriodKeys[0]);
+            periodSelect.value = currentPeriodIndex;
+        }
+    } else {
+        // 添加一个默认选项
+        const option = document.createElement('option');
+        option.value = currentPeriodIndex;
+        option.text = `周期索引 ${currentPeriodIndex} (0.01s)`;
+        option.selected = true;        periodSelect.appendChild(option);
+    }
+}
+
+// 更新当前周期显示
+function updateCurrentPeriodDisplay() {
+    const periodDisplay = document.getElementById('currentPeriodDisplay');
+    if (periodDisplay && imMetadata && imMetadata.periods && imMetadata.periods[currentPeriodIndex]) {
+        const periodValue = imMetadata.periods[currentPeriodIndex].period_value;
+        periodDisplay.textContent = `${periodValue.toFixed(2)}s`;
+    } else if (periodDisplay) {
+        periodDisplay.textContent = `索引${currentPeriodIndex}`;
+    }
+}
+
+// 处理地图点击事件
+function handleMapClick(evt) {
+    const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+        return feature;
+    });
+    
+    if (feature) {
+        const properties = feature.getProperties();
+        if (properties.loss_value !== undefined) {
+            // 建筑群要素
+            showBuildingPopup(evt.coordinate, properties);
+        }
+    }
+}
+
+// 处理地图悬停事件
+function handleMapHover(evt) {
+    const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
+        return feature;
+    });
+    
+    map.getTargetElement().style.cursor = feature ? 'pointer' : '';
+}
+
+// 显示建筑物弹窗
+function showBuildingPopup(coordinate, properties) {
     // 移除现有弹窗
     const existingPopup = document.getElementById('popup');
     if (existingPopup) {
         existingPopup.remove();
     }
-    // 处理loss_value - 直接解析特殊格式 (35:0,0,0,0,1,0,...)
-    let displayLossValue = properties.loss_value;
     
+    // 处理loss_value - 解析特殊格式 (35:0,0,0,0,1,0,...)
+    let displayLossValue = properties.loss_value;
     try {
-        const content = displayLossValue.slice(1, -1); // 移除括号
-        const parts = content.split(':');
-        if (parts.length === 2) {
-            const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
-            const currentRupIndex = parseInt(document.getElementById('eq_i_rup').value || '0');
-            displayLossValue = currentRupIndex < valuesArray.length ? valuesArray[currentRupIndex] : valuesArray[0];
+        if (typeof displayLossValue === 'string' && displayLossValue.startsWith('(') && displayLossValue.includes(':')) {
+            const content = displayLossValue.slice(1, -1);
+            const parts = content.split(':');
+            if (parts.length === 2) {
+                const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
+                displayLossValue = currentRupture < valuesArray.length ? valuesArray[currentRupture] : valuesArray[0];
+            }
         }
     } catch (e) {
         // 解析失败，使用原值
@@ -337,15 +491,12 @@ function showPopup(coordinate, properties) {
     if (properties.structure) popupContent += `<strong>结构类型:</strong> ${properties.structure}<br>`;
     if (properties.story) popupContent += `<strong>楼层数:</strong> ${properties.story}<br>`;
     if (properties.DistrictName) popupContent += `<strong>区域:</strong> ${properties.DistrictName}<br>`;
-    
     popupContent += '</div>';
 
-    // 创建弹窗元素
     const popupElement = document.createElement('div');
     popupElement.id = 'popup';
     popupElement.innerHTML = popupContent;
 
-    // 创建OpenLayers覆盖层
     const popup = new ol.Overlay({
         element: popupElement,
         positioning: 'bottom-center',
@@ -363,14 +514,43 @@ function showPopup(coordinate, properties) {
     }, 3000);
 }
 
-// 加载地图数据
+// 创建震源轮廓图层（使用 map-common.js 的函数）
+async function createRuptureLayerLocal() {
+    try {
+        // 移除现有图层
+        if (ruptureLayer) {
+            map.removeLayer(ruptureLayer);
+        }
+        // 使用 map-common.js 中的函数
+        ruptureLayer = await createRuptureLayer(map, currentCity, currentRupture, 100);
+    } catch (error) {
+        console.error('创建震源图层失败:', error);
+    }
+}
+
+// 创建等值线图层（使用 map-common.js 的函数）
+async function createContourLayerLocal() {
+    try {
+        // 移除现有图层
+        if (contourLayer) {
+            map.removeLayer(contourLayer);
+        }
+        // 使用 map-common.js 中的函数
+        contourLayer = await createContourLayer(map, currentCity, currentRupture, currentPeriodIndex, currentISim, 200);
+    } catch (error) {
+        console.error('创建等值线图层失败:', error);
+    }
+}
+
+// 加载建筑群损失数据
 function loadMapData() {
     const formData = new FormData(document.getElementById('mapForm'));
     const params = new URLSearchParams();
     
     params.append('city', currentCity);
-    params.append('eq_i_rup', formData.get('eq_i_rup') || '{{ eq_i_rup }}');
+    params.append('eq_i_rup', formData.get('eq_i_rup') || currentRupture);
     params.append('LossType', formData.get('LossType') || '{{ LossType }}');
+    params.append('iSim', formData.get('iSim') || currentISim);
     params.append('use_mbtiles', 'true');
 
     document.getElementById('loadingOverlay').classList.remove('hidden');
@@ -405,34 +585,31 @@ function loadMapData() {
         });
 }
 
-// 添加矢量瓦片图层
+// 添加矢量瓦片图层（建筑群损失）
 function addVectorTileLayer(tileUrl, bounds) {
-    
     // 移除现有的矢量图层
     if (vectorLayer) {
         map.removeLayer(vectorLayer);
     }    
-    // 创建矢量瓦片源
+    
     const vectorSource = new ol.source.VectorTile({
         format: new ol.format.MVT(),
         url: tileUrl,
         maxZoom: 16,
         minZoom: 8
     });
-    // 创建样式函数
+    
     const styleFunction = function(feature) {
         try {
             const properties = feature.getProperties();
             
-            // 获取loss_value并解析特殊格式 (35:0,0,0,0,1,0,...)
             let lossValue = properties.loss_value;
             if (typeof lossValue === 'string' && lossValue.startsWith('(') && lossValue.includes(':')) {
-                const content = lossValue.slice(1, -1); // 移除括号
+                const content = lossValue.slice(1, -1);
                 const parts = content.split(':');
                 if (parts.length === 2) {
                     const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
-                    const currentRupIndex = parseInt(document.getElementById('eq_i_rup').value || '0');
-                    lossValue = currentRupIndex < valuesArray.length ? valuesArray[currentRupIndex] : valuesArray[0];
+                    lossValue = currentRupture < valuesArray.length ? valuesArray[currentRupture] : valuesArray[0];
                 }
             }
             
@@ -441,30 +618,31 @@ function addVectorTileLayer(tileUrl, bounds) {
             
             switch(lossNum) {
                 case 0: 
-                    fillColor = 'rgba(0, 100, 255, 0.7)';   // 蓝色 - 无损失
+                    fillColor = 'rgba(0, 100, 255, 0.7)';
                     strokeColor = 'rgba(0, 100, 255, 1.0)';
                     break;  
                 case 1: 
-                    fillColor = 'rgba(255, 237, 160, 1.0)'; // 浅黄 - 轻微损失
+                    fillColor = 'rgba(255, 237, 160, 1.0)';
                     strokeColor = '#e6d000';
                     break;  
                 case 2: 
-                    fillColor = 'rgba(254, 217, 118, 1.0)'; // 橙黄 - 中等损失
+                    fillColor = 'rgba(254, 217, 118, 1.0)';
                     strokeColor = '#ff9900';
                     break;  
                 case 3: 
-                    fillColor = 'rgba(253, 141, 60, 1.0)';  // 橙色 - 严重损失
+                    fillColor = 'rgba(253, 141, 60, 1.0)';
                     strokeColor = '#ff6600';
                     break;  
                 case 4: 
-                    fillColor = 'rgba(240, 59, 32, 1.0)';   // 红色 - 完全损失
+                    fillColor = 'rgba(240, 59, 32, 1.0)';
                     strokeColor = '#cc0000';
                     break;  
                 default: 
-                    fillColor = 'rgba(255, 0, 255, 0.9)';   // 洋红色 - 未知
+                    fillColor = 'rgba(255, 0, 255, 0.9)';
                     strokeColor = '#ff00ff';
             }
-              return new ol.style.Style({
+            
+            return new ol.style.Style({
                 fill: new ol.style.Fill({
                     color: fillColor
                 }),
@@ -481,21 +659,22 @@ function addVectorTileLayer(tileUrl, bounds) {
         }
     };
     
-    // 创建矢量瓦片图层
+    // 创建建筑群损失图层，设置较高的zIndex确保在等值线之上
     vectorLayer = new ol.layer.VectorTile({
         source: vectorSource,
-        style: styleFunction    
+        style: styleFunction,
+        zIndex: 300
     });
 
     map.addLayer(vectorLayer);    
-    // 使用MBTiles元数据的精确边界调整地图视图
+    
+    // 调整地图视图
     if (bounds && bounds.length === 4) {
         map.getView().fit(bounds, {
             padding: [50, 50, 50, 50],
             maxZoom: 16
         });
     } else {
-        // 使用默认边界
         const metadataBounds = [113.7081142, 29.9695723, 115.0815567, 31.3529616];
         map.getView().fit(metadataBounds, {
             padding: [50, 50, 50, 50],
@@ -504,7 +683,6 @@ function addVectorTileLayer(tileUrl, bounds) {
         });
     }
 }
-
 
 // 显示地震信息
 function displayEQInfo(eqInfo) {
@@ -520,8 +698,29 @@ function displayEQInfo(eqInfo) {
 }
 
 // 更新地图
-function updateMap() {
+async function updateMap() {
+    const newRupture = parseInt(document.getElementById('eq_i_rup').value);
+    const newLossType = document.getElementById('LossType').value;
+    const newPeriodIndex = parseInt(document.getElementById('period_index').value);
+    
+    // 检查是否需要更新震源或周期相关的图层
+    const needUpdateLayers = (newRupture !== currentRupture) || (newPeriodIndex !== currentPeriodIndex);
+      if (needUpdateLayers) {
+        currentRupture = newRupture;
+        currentPeriodIndex = newPeriodIndex;
+        
+        // 更新震源图层和等值线图层
+        await createRuptureLayerLocal();
+        await createContourLayerLocal();
+    } else {
+        // 只更新震源索引
+        currentRupture = newRupture;
+    }
+    // 重新加载建筑群数据
     loadMapData();
+    
+    // 更新周期显示
+    updateCurrentPeriodDisplay();
 }
 
 // 返回首页
@@ -536,16 +735,14 @@ function backToRuptureSelection() {
 
 // 当震源索引变化时重新渲染地图
 function onRupIndexChange() {
-    // 重新应用样式到所有要素
     if (vectorLayer && vectorLayer.getSource()) {
         const source = vectorLayer.getSource();
         source.forEachFeature(function(feature) {
-            feature.changed(); // 触发要素重新渲染
+            feature.changed();
         });
-        vectorLayer.changed(); // 触发图层重新渲染
+        vectorLayer.changed();
     }
     
-    // 移除现有弹窗（如果有的话）
     const existingPopup = document.getElementById('popup');
     if (existingPopup) {
         existingPopup.remove();
@@ -554,11 +751,25 @@ function onRupIndexChange() {
 
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 添加震源索引变化监听器
     const rupIndexInput = document.getElementById('eq_i_rup');
     if (rupIndexInput) {
         rupIndexInput.addEventListener('input', onRupIndexChange);
         rupIndexInput.addEventListener('change', onRupIndexChange);
+    }
+    
+    // 为周期选择器添加事件监听器    
+    const periodSelect = document.getElementById('period_index');
+    if (periodSelect) {
+        periodSelect.addEventListener('change', async function() {
+            const newPeriodIndex = parseInt(this.value);
+            if (newPeriodIndex !== currentPeriodIndex) {
+                currentPeriodIndex = newPeriodIndex;
+                updateCurrentPeriodDisplay();
+                
+                // 自动更新等值线图层
+                await createContourLayerLocal();
+            }
+        });
     }
     
     initMap();

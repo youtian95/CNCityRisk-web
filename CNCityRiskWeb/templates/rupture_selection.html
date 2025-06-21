@@ -179,16 +179,9 @@
 {% block content %}
 <div class="container">
     <div class="sidebar">
-        <h3>震源选择</h3>
-        
-        <!-- 城市选择 -->
+        <h3>震源选择</h3>        <!-- 城市选择 -->
         <div class="form-group">
-            <label for="city">城市:</label>
-            <select id="city" name="city">
-                {% for city in cities %}
-                    <option value="{{ city }}" {% if city == current_city %}selected{% endif %}>{{ city }}</option>
-                {% endfor %}
-            </select>
+            <label>当前城市: {{ current_city }}</label>
         </div>
         <!-- 图例 -->
         <div class="legend">
@@ -228,7 +221,7 @@
             <div id="selected-rupture-info">
                 <p>请从列表中选择一个震源</p>
             </div>
-        </div>
+        </div>        
         <!-- 操作按钮 -->
         <div class="form-group" style="margin-top: 20px;">            
             <button class="btn" onclick="proceedToAnalysis()" id="proceed-btn" disabled style="width: 100%;">
@@ -239,6 +232,9 @@
             </button>
             <button class="btn btn-secondary" onclick="clearSelection()" style="width: 100%; margin-top: 10px;">
                 清除选择
+            </button>
+            <button class="btn btn-secondary" onclick="backToCitySelection()" style="width: 100%; margin-top: 10px; background-color: #6c757d;">
+                返回城市选择
             </button>
         </div>
     </div>
@@ -531,7 +527,6 @@
             }
         }
     }
-    
     // 添加震源列表点击事件
     function addRuptureListEvents() {
         const ruptureItems = document.querySelectorAll('.rupture-item');
@@ -543,13 +538,6 @@
         });
     }
     
-    // 城市切换事件
-    document.getElementById('city').addEventListener('change', function() {
-        const newCity = this.value;
-        if (newCity !== currentCity) {
-            window.location.href = `/rupture_selection?city=${encodeURIComponent(newCity)}`;
-        }
-    });    
     // 继续分析
     function proceedToAnalysis() {
         if (selectedRuptureIndex === null) {
@@ -560,7 +548,6 @@
         const url = `/LossMap?city=${currentCity}&eq_i_rup=${selectedRuptureIndex}&use_mbtiles=true`;
         window.location.href = url;
     }
-    
     // IM中值云图分析
     function proceedToIMAnalysis() {
         if (selectedRuptureIndex === null) {
@@ -570,6 +557,11 @@
         // 跳转到IM中值云图页面，传递选中的震源索引
         const url = `/IMMap?city=${currentCity}&eq_i_rup=${selectedRuptureIndex}&period_index=0`;
         window.location.href = url;
+    }
+    
+    // 返回城市选择页面
+    function backToCitySelection() {
+        window.location.href = '/';
     }
     
     // 页面加载完成后初始化地图

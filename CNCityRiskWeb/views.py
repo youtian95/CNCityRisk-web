@@ -22,23 +22,20 @@ def LossMap():
     """
     损失地图页面路由
     只支持GET请求，仅使用mbtiles格式地图
-    """# 获取请求参数
+    """
+    # 获取请求参数
     current_city = request.args.get('city')
     eq_i_rup = request.args.get('eq_i_rup', '0')
     LossType = request.args.get('LossType', 'DS_Struct')
+    iSim = request.args.get('iSim', '0') 
+
     # 验证必需参数
     if not current_city:
         flash('缺少必需的参数', 'error')
         return redirect(url_for('index'))
     
-    # 转换震源索引为整数
-    try:
-        eq_i_rup_int = int(eq_i_rup)
-    except ValueError:
-        eq_i_rup_int = 0
-        eq_i_rup = '0'
     # 检查mbtiles文件是否存在
-    mbtiles_path = Path(app.static_folder) / 'maps' / 'mbtiles' / f'RegionalLoss_{current_city}_{LossType}_0_ogr2ogr.mbtiles'
+    mbtiles_path = Path(app.static_folder) / 'maps' / 'mbtiles' / f'RegionalLoss_{current_city}_{LossType}_{iSim}_ogr2ogr.mbtiles'
     has_mbtiles = mbtiles_path.exists()
     
     # 如果没有mbtiles文件，返回错误
@@ -52,81 +49,57 @@ def LossMap():
         'current_city': current_city,
         'eq_i_rup': eq_i_rup,
         'LossType': LossType,
-        'has_mbtiles': has_mbtiles
+        'has_mbtiles': has_mbtiles,
+        'iSim': iSim
     }
     
     # 只使用mbtiles地图模板
     app.logger.info(f'Rendering mbtiles map for {current_city}, rupture {eq_i_rup}')
     return render_template('lossmap_mbtiles.html', **template_context)
 
-# 新增异步获取地图数据的路由
+# 新增异步获取建筑群损失地图数据的路由
 @app.route('/get_map_data')
 def get_map_data():
     """
-    获取区域损失地图数据，支持mbtiles和HTML地图两种方式
-     - 如果使用mbtiles，则返回瓦片URL和边界信息
-     - 如果使用HTML地图，则返回HTML内容和CDF图像
+    获取区域损失地图数据，则返回瓦片URL和边界信息
     """
     current_city = request.args.get('city')
-    current_district = request.args.get('district')
     eq_i_rup = int(request.args.get('eq_i_rup', 0))
     LossType = request.args.get('LossType', 'DS_Struct')
-    use_mbtiles = request.args.get('use_mbtiles', 'true').lower() == 'true'
+    iSim = request.args.get('iSim', '0')
     
-    if use_mbtiles:
-        # 使用mbtiles矢量瓦片
-        # 修改文件路径逻辑：优先查找包含所有rup_index数据的文件
-        mbtiles_path = Path(app.static_folder) / 'maps' / 'mbtiles' / f'RegionalLoss_{current_city}_{LossType}_0_ogr2ogr.mbtiles'
+    # 使用mbtiles矢量瓦片
+    # 修改文件路径逻辑：使用 iSim 参数
+    mbtiles_path = Path(app.static_folder) / 'maps' / 'mbtiles' / f'RegionalLoss_{current_city}_{LossType}_{iSim}_ogr2ogr.mbtiles'
+    
+    if not mbtiles_path.exists():
+        return jsonify({'error': 'MBTiles文件不存在！'}), 404
         
-        if not mbtiles_path.exists():
-            return jsonify({'error': 'MBTiles文件不存在！'}), 404
-            
-        encoded_city = quote(current_city)
-        tile_url = f"{request.url_root}tiles/{encoded_city}/{LossType}/{{z}}/{{x}}/{{y}}.pbf"
-        
-        # 获取MBTiles边界信息
-        bounds = None
-        try:
-            conn = sqlite3.connect(str(mbtiles_path))
-            cursor = conn.cursor()
-            cursor.execute("SELECT value FROM metadata WHERE name='bounds'")
-            bounds_result = cursor.fetchone()
-            if bounds_result:
-                bounds = [float(x) for x in bounds_result[0].split(',')]
-            conn.close()
-        except Exception as e:
-            app.logger.warning(f"Could not get bounds from MBTiles: {e}")
-        
-        # 从mbtiles获取地震信息（如果有的话）
-        eq_info = models.get_EQ_info_from_mbtiles(current_city, LossType, eq_i_rup)
-        
-        # CDF图文件
-        CDF_img_content = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup=eq_i_rup, savedir=Path(app.static_folder) / 'maps')
-        
-        return jsonify({
-            'use_mbtiles': True,
-            'tile_url': tile_url,
-            'bounds': bounds,
-            'CDF_img_content': CDF_img_content,
-            'eq_info': eq_info
-        })
-    else:
-        # 使用原有的HTML地图
-        html_content = models.get_map_regional_losses(current_city, current_district, i_rup=eq_i_rup, LossType=LossType, savedir=Path(app.static_folder) / 'maps')
-        if not html_content:
-            return jsonify({'error': '地图文件不存在！'}), 404
-        
-        eq_info = models.get_EQ_info_from_map(html_content)
-        
-        # CDF图文件
-        CDF_img_content = models.get_image_CDF_regional_losses(current_city, LossType=LossType, i_rup=eq_i_rup, savedir=Path(app.static_folder) / 'maps')
-        
-        return jsonify({
-            'use_mbtiles': False,
-            'html_content': html_content,
-            'CDF_img_content': CDF_img_content,
-            'eq_info': eq_info
-        })
+    encoded_city = quote(current_city)
+    tile_url = f"{request.url_root}tiles/{encoded_city}/{LossType}/{{z}}/{{x}}/{{y}}.pbf"
+    
+    # 获取MBTiles边界信息
+    bounds = None
+    try:
+        conn = sqlite3.connect(str(mbtiles_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM metadata WHERE name='bounds'")
+        bounds_result = cursor.fetchone()
+        if bounds_result:
+            bounds = [float(x) for x in bounds_result[0].split(',')]
+        conn.close()
+    except Exception as e:
+        app.logger.warning(f"Could not get bounds from MBTiles: {e}")
+    
+    # 从mbtiles获取地震信息（如果有的话）
+    eq_info = models.get_EQ_info_from_mbtiles(current_city, LossType, eq_i_rup)
+    
+    return jsonify({
+        'use_mbtiles': True,
+        'tile_url': tile_url,
+        'bounds': bounds,
+        'eq_info': eq_info
+    })
 
 
 @app.route('/get_city_list')
@@ -149,23 +122,96 @@ def get_district_list():
 
 @app.route('/get_city_coordinates')
 def get_city_coordinates():
-    """获取所有可用城市的地理坐标数据"""
-    coordinates = models.get_city_coordinates()
-    # 只返回可用城市的坐标
-    available_coordinates = {}
+    """
+    获取城市的地理坐标数据
     
-    for province, cities in models.Province_City_District.items():
-        for city in cities.keys():
-            if city in coordinates:
-                available_coordinates[city] = {
-                    'province': province,
-                    'center': coordinates[city]['center'],
-                    'bounds': coordinates[city]['bounds'],
-                    'coordinates': coordinates[city]['coordinates'],
-                    'district_count': len(cities[city])
-                }
+    该函数通过调用 models.get_city_coordinates() 获取城市的地理边界和中心坐标信息。
+    如果提供了城市名参数，则只返回该城市的坐标数据；否则返回所有可用城市的坐标数据。
     
-    return jsonify(available_coordinates)
+    Args:
+        city (str, optional): 城市名称，通过 URL 参数传递。如果提供，只返回该城市的坐标数据。
+    
+    Returns:
+        JSON: 包含城市坐标信息的字典，格式如下：
+        
+        当请求单个城市时 (GET /get_city_coordinates?city=武汉):
+        {
+            "province": "省份名",
+            "center": [纬度, 经度],  # 城市中心坐标
+            "bounds": [[south, west], [north, west], [north, east], [south, east]],  # 城市边界矩形
+            "coordinates": [[纬度1, 经度1], [纬度2, 经度2], ...],  # 城市边界多边形坐标点数组
+            "district_count": 区县数量
+        }
+        
+        当请求所有城市时 (GET /get_city_coordinates):
+        {
+            "城市名": {
+                "province": "省份名",
+                "center": [纬度, 经度],
+                "bounds": [[south, west], [north, west], [north, east], [south, east]],
+                "coordinates": [[纬度1, 经度1], [纬度2, 经度2], ...],
+                "district_count": 区县数量
+            },
+            ...
+        }
+    
+    注意:
+        - 坐标格式统一为 [纬度, 经度]
+        - center: 城市的地理中心点坐标
+        - bounds: 城市的最小外接矩形，按 [south, west], [north, west], [north, east], [south, east] 顺序
+        - coordinates: 城市实际边界的多边形坐标点数组
+        - 只返回在系统中有区县数据支持的城市
+        - 如果请求的城市不存在，返回 404 错误
+    
+    Examples:
+        GET /get_city_coordinates  # 获取所有城市坐标
+        GET /get_city_coordinates?city=武汉  # 获取武汉的坐标
+    """    
+    # 获取请求参数
+    requested_city = request.args.get('city')
+    
+    # 根据请求参数调用相应的函数
+    if requested_city:
+        # 如果指定了城市，只获取该城市的数据
+        coordinates = models.get_city_coordinates(requested_city)
+        
+        if not coordinates:
+            return jsonify({'error': f'城市 "{requested_city}" 不存在或没有坐标数据'}), 404
+        
+        # 获取城市的省份和区县信息
+        province = None
+        district_count = 0
+        for prov, cities in models.Province_City_District.items():
+            if requested_city in cities:
+                province = prov
+                district_count = len(cities[requested_city])
+                break
+        
+        # 构建返回数据
+        city_data = coordinates[requested_city]
+        city_data['province'] = province
+        city_data['district_count'] = district_count
+        
+        return jsonify(city_data)
+    else:
+        # 获取所有城市坐标数据
+        coordinates = models.get_city_coordinates()
+        
+        # 构建可用城市的坐标数据
+        available_coordinates = {}
+        for province, cities in models.Province_City_District.items():
+            for city in cities.keys():
+                if city in coordinates:
+                    available_coordinates[city] = {
+                        'province': province,
+                        'center': coordinates[city]['center'],
+                        'bounds': coordinates[city]['bounds'],
+                        'coordinates': coordinates[city]['coordinates'],
+                        'district_count': len(cities[city])
+                    }
+        
+        # 返回所有可用城市的坐标
+        return jsonify(available_coordinates)
 
 # 新增mbtiles瓦片服务路由 - 修改为不包含rup_index的路由
 @app.route('/tiles/<city>/<loss_type>/<int:z>/<int:x>/<int:y>.pbf')
@@ -275,7 +321,7 @@ def IMMap():
         eq_i_rup = 0
         period_index = 0
     # 检查IM网格数据文件是否存在
-    im_data_path = Path(app.static_folder) / 'maps' / f'IM_median_mapdata_{current_city}.json'
+    im_data_path = Path(app.static_folder) / 'maps' / 'mapdata' / f'IM_mapdata_{current_city}.json'
     
     if not im_data_path.exists():
         app.logger.error(f'IM grid data file not found: {im_data_path}')
@@ -309,6 +355,7 @@ def get_im_grid_data():
     current_city = request.args.get('city')
     eq_i_rup = request.args.get('eq_i_rup')
     period_index = request.args.get('period_index')
+    isim = request.args.get('isim', type='int', default=None)  # 是否使用IM中值云图数据, 如果无数据则为中值
     
     # 验证必需参数
     if not current_city or eq_i_rup is None or period_index is None:
@@ -321,7 +368,7 @@ def get_im_grid_data():
         return jsonify({'error': '破裂面索引和周期索引必须是整数'}), 400
     
     # 构建IM网格数据文件路径
-    im_data_path = Path(app.static_folder) / 'maps' / f'IM_median_mapdata_{current_city}.json'
+    im_data_path = Path(app.static_folder) / 'maps' / 'mapdata' / f'IM_mapdata_{current_city}.json'
     
     if not im_data_path.exists():
         return jsonify({'error': f'城市 {current_city} 的IM网格数据文件不存在'}), 404
@@ -335,6 +382,9 @@ def get_im_grid_data():
         metadata = im_data.get('metadata', {})
         total_ruptures = metadata.get('total_ruptures', 0)
         total_periods = metadata.get('total_periods', 0)
+        selected_iSim = metadata.get('selected_iSim')
+        if isim is not None and isim != selected_iSim:
+            return jsonify({'error': f'指定的isim索引 {isim} 与元数据中的选定索引 {selected_iSim} 不匹配'}), 400
         
         if eq_i_rup >= total_ruptures or eq_i_rup < 0:
             return jsonify({'error': f'破裂面索引 {eq_i_rup} 超出范围 [0, {total_ruptures-1}]'}), 400
@@ -351,7 +401,12 @@ def get_im_grid_data():
         for site in sites:
             lon = site.get('lon')
             lat = site.get('lat')
-            im_matrix = site.get('im_matrix')
+            if isim is None:
+                # 使用IM中值云图数据
+                im_matrix = site.get('im_median_matrix')
+            else:
+                # 使用IM随机云图数据
+                im_matrix = site.get('im_random_matrix')
             
             if lon is None or lat is None or im_matrix is None:
                 continue
@@ -362,7 +417,12 @@ def get_im_grid_data():
                 isinstance(im_matrix[eq_i_rup], list) and 
                 period_index < len(im_matrix[eq_i_rup])):
                 
-                im_value = im_matrix[eq_i_rup][period_index]
+                if isim is None:
+                    # 使用IM中值云图数据
+                    im_value = im_matrix[eq_i_rup][period_index]
+                else:
+                    # 使用IM随机云图数据    
+                    im_value = im_matrix[eq_i_rup][period_index][0]
                 
                 # 检查IM值的有效性
                 if im_value is not None and not (isinstance(im_value, float) and (im_value != im_value)):  # 检查NaN
