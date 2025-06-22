@@ -90,7 +90,6 @@ def get_map_data():
         conn.close()
     except Exception as e:
         app.logger.warning(f"Could not get bounds from MBTiles: {e}")
-    
     # 从mbtiles获取地震信息（如果有的话）
     eq_info = models.get_EQ_info_from_mbtiles(current_city, LossType, eq_i_rup)
     
@@ -100,6 +99,158 @@ def get_map_data():
         'bounds': bounds,
         'eq_info': eq_info
     })
+
+
+@app.route('/LossStatistics', methods=['GET'])
+def LossStatistics():
+    """
+    建筑群损失统计信息页面路由
+    显示指定城市和损失类型的所有地震事件统计信息
+    """
+    # 获取请求参数
+    current_city = request.args.get('city')
+    LossType = request.args.get('LossType', 'DS_Struct')
+    eq_i_rup = request.args.get('eq_i_rup', '0')
+    iSim = request.args.get('iSim', '0')
+    
+    # 验证必需参数
+    if not current_city:
+        flash('缺少必需的参数', 'error')
+        return redirect(url_for('index'))
+    
+    # 检查统计文件是否存在
+    stats_path = Path(app.static_folder) / 'maps' / 'RegionalLossStatistics' / current_city / f'RegionalLossStatistics_{LossType}.json'
+    
+    if not stats_path.exists():
+        app.logger.error(f'Statistics file not found: {stats_path}')
+        flash(f'城市 {current_city} 的损失统计数据不存在', 'error')
+        return redirect(url_for('index'))
+    
+    # 模板上下文数据
+    template_context = {
+        'current_city': current_city,
+        'LossType': LossType,
+        'iSim': iSim,
+        'eq_i_rup': eq_i_rup
+    }
+    
+    app.logger.info(f'Rendering loss statistics for {current_city}, loss type {LossType}')
+    return render_template('loss_statistics.html', **template_context)
+
+@app.route('/get_loss_statistics')
+def get_loss_statistics():
+    """
+    获取损失统计数据的API端点，支持获取单个震源或所有震源的统计信息
+
+    参数:
+        city: 城市名称
+        LossType: 损失类型
+        eq_i_rup: 震源索引，如果提供则只返回该震源的统计信息；如果不提供则返回所有震源
+
+    返回格式:
+        {
+            "CityName": "城市名称",
+            "LossType": "损失类型",
+            "generated_at": "生成时间戳 (ISO格式)",
+            "total_earthquakes": "地震事件总数 (int)",
+            "earthquake_events": [
+                {
+                    "i_rup": "震源索引 (int)",
+                    "rup_id": "震源ID (str)",
+                    "earthquake_info": {
+                        "magnitude": "震级 (float)",
+                        "centroid_lat": "震中纬度 (float)",
+                        "centroid_lon": "震中经度 (float)", 
+                        "hypo_depth": "震源深度 (float)",
+                        "strike": "走向角 (float)",
+                        "dip": "倾角 (float)",
+                        "rake": "滑动角 (float)",
+                        "trt": "构造类型 (str)",
+                        "source_id": "震源ID (str)"
+                    },
+                    "simulation_info": {
+                        "total_simulations": "该震源的总模拟次数 (int)",
+                        "selected_iSim": "选择的模拟索引 (int)",
+                        "simulation_indices": "所有模拟索引列表 (list[int])"
+                    },
+                    "loss_statistics": {
+                        "total_loss_sim": "所有模拟的损失分布 (N_DS x N_sim 数组)",
+                        "total_loss_iSim": "指定模拟的总损失 (N_DS 数组)",
+                        "percentiles_iSim": "指定模拟在分布中的百分位数 (N_DS 数组)",
+                        "damage_state_names": "损伤状态名称列表 (仅损伤状态类型)",
+                        "loss_description": "损失描述 (str)"
+                    }
+                }
+            ],
+            "summary": {
+                "successful_events": "成功处理的事件数 (int)",
+                "failed_events": "处理失败的事件数 (int)",
+                "success_rate": "成功率 (float, 0-1)"
+            }
+        }
+
+    损失统计数据说明:
+        - 对于损伤状态类型 (DS_*):
+            * N_DS = 5 (对应5个损伤状态: 'DS0', 'DS1', 'DS2', 'DS3', 'DS4')
+            * total_loss_sim[i,j]: 第j次模拟中处于第i个损伤状态的建筑物数量
+            * total_loss_iSim[i]: 指定模拟中处于第i个损伤状态的建筑物数量
+            * percentiles_iSim[i]: 指定模拟中第i个损伤状态建筑数量在所有模拟中的百分位数
+        
+        - 对于连续损失类型 (RepairCost_*, RepairTime等):
+            * N_DS = 1
+            * total_loss_sim[0,j]: 第j次模拟的总损失值
+            * total_loss_iSim[0]: 指定模拟的总损失值
+            * percentiles_iSim[0]: 指定模拟的总损失值在所有模拟中的百分位数
+    """
+    current_city = request.args.get('city')
+    LossType = request.args.get('LossType', 'DS_Struct')
+    eq_i_rup = request.args.get('eq_i_rup')  # 可选参数
+    
+    if not current_city:
+        return jsonify({'error': '缺少城市参数'}), 400
+    
+    # 读取统计文件
+    stats_path = Path(app.static_folder) / 'maps' / 'RegionalLossStatistics' / current_city / f'RegionalLossStatistics_{LossType}.json'
+    
+    if not stats_path.exists():
+        return jsonify({'error': '统计文件不存在'}), 404
+    
+    try:
+        with open(stats_path, 'r', encoding='utf-8') as f:
+            stats_data = json.load(f)
+        
+        # 如果指定了震源索引，只返回该震源的信息
+        if eq_i_rup is not None:
+            try:
+                eq_i_rup = int(eq_i_rup)
+            except ValueError:
+                return jsonify({'error': '震源索引必须是整数'}), 400
+            
+            # 查找指定的震源事件
+            target_event = None
+            for event in stats_data.get('earthquake_events', []):
+                if event.get('i_rup') == eq_i_rup:
+                    target_event = event
+                    break
+            
+            if target_event is None:
+                return jsonify({'error': f'未找到震源索引 {eq_i_rup} 的统计数据'}), 404
+            
+            # 返回单个震源的信息
+            return jsonify({
+                'CityName': stats_data.get('CityName'),
+                'LossType': stats_data.get('LossType'),
+                'generated_at': stats_data.get('generated_at'),
+                'eq_i_rup': eq_i_rup,
+                'earthquake_event': target_event
+            })
+        else:
+            # 返回所有震源的统计信息
+            return jsonify(stats_data)
+            
+    except Exception as e:
+        app.logger.error(f"Error reading statistics file: {e}")
+        return jsonify({'error': '读取统计文件失败'}), 500
 
 
 @app.route('/get_city_list')
@@ -355,7 +506,12 @@ def get_im_grid_data():
     current_city = request.args.get('city')
     eq_i_rup = request.args.get('eq_i_rup')
     period_index = request.args.get('period_index')
-    isim = request.args.get('isim', type='int', default=None)  # 是否使用IM中值云图数据, 如果无数据则为中值
+    isim = request.args.get('isim', default=None)
+    if isim is not None:
+        try:
+            isim = int(isim)
+        except ValueError:
+            return jsonify({'error': 'isim参数必须为整数'}), 400
     
     # 验证必需参数
     if not current_city or eq_i_rup is None or period_index is None:

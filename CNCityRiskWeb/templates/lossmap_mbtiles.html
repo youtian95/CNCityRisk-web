@@ -109,12 +109,21 @@
 }
 
 /* 返回震源选择按钮 */
-.SelectionPanelContainer-lossmap button:nth-child(2) {
+.SelectionPanelContainer-lossmap button:nth-child(3) {
     background-color: #28a745;
 }
 
-.SelectionPanelContainer-lossmap button:nth-child(2):hover {
+.SelectionPanelContainer-lossmap button:nth-child(3):hover {
     background-color: #1e7e34;
+}
+
+/* 查看统计按钮 */
+.SelectionPanelContainer-lossmap button:nth-child(2) {
+    background-color: #17a2b8;
+}
+
+.SelectionPanelContainer-lossmap button:nth-child(2):hover {
+    background-color: #0f6674;
 }
 
 /* 返回首页按钮 */
@@ -278,9 +287,9 @@
                         第<span id="simIndexDisplay">{{ iSim|default(0)|int + 1 }}</span>次随机模拟
                     </div>
                     <input type="hidden" id="iSim" name="iSim" value="{{ iSim|default(0) }}">
-                    
                     <br>
                     <button type="button" onclick="updateMap()">更新地图</button>
+                    <button type="button" onclick="viewStatistics()">查看统计</button>
                     <button type="button" onclick="backToRuptureSelection()">返回震源选择</button>
                     <button type="button" onclick="backToIndex()">返回首页</button>
                 </div>
@@ -731,6 +740,13 @@ function backToIndex() {
 // 返回震源选择界面
 function backToRuptureSelection() {
     window.location.href = `/rupture_selection?city=${encodeURIComponent(currentCity)}`;
+}
+
+// 跳转到统计页面
+function viewStatistics() {
+    const lossType = document.getElementById('LossType').value;
+    const url = `/LossStatistics?city=${encodeURIComponent(currentCity)}&LossType=${lossType}&eq_i_rup=${currentRupture}&iSim=${currentISim}`;
+    window.open(url, '_blank');
 }
 
 // 当震源索引变化时重新渲染地图
