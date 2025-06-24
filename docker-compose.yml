@@ -1,12 +1,11 @@
 services:
   flask:
-    build: .
+    image: youtian95/cncityrisk:latest
     restart: always
     networks:
       - app-network
     volumes:
       - ./CNCityRiskWeb/static/maps:/app/CNCityRiskWeb/static/maps
-      - ./config.ini:/app/config.ini
       - ./gunicorn.conf.py:/app/gunicorn.conf.py
     environment:
       - FLASK_ENV=production

@@ -44,23 +44,14 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
    # 复制所需的配置文件
    cp temp/docker-compose.yml ./
    cp temp/nginx.conf ./
-   cp temp/gunicorn.conf.py ./
+   cp temp/gunicorn.conf.py ./ 
    
    # 静态文件
    cp -r temp/CNCityRiskWeb/static ./CNCityRiskWeb/
    
    # 清理临时文件
    rm -rf temp
-   
-   # 创建 config.ini 文件（需要手动配置API密钥）
-   cat > config.ini << 'EOF'
-   [API]
-   api_key_OpenTopography = your_key
-   api_key_TDT = your_key
-   EOF
    ```
-   
-   > **注意**: config.ini文件包含API密钥，需要手动创建并填入您自己的密钥。
 
 3. 创建必要的目录结构(如果从GitHub复制的静态文件不包含maps目录):
    ```bash
@@ -132,26 +123,14 @@ docker-compose up -d
     cd CNCityRisk-web
     ```
 
-2. 配置API密钥：
-    ```bash
-    # 创建或编辑config.ini文件
-    vim config.ini
-    ```
-    添加以下内容：
-    ```ini
-    [API]
-    api_key_OpenTopography = your_key
-    api_key_TDT = your_key
-    ```
+2. 确保损失图结果数据已上传到`CNCityRiskWeb/static/maps`目录，cncityrisk安装包上传到工作目录
 
-3. 确保损失图结果数据已上传到`CNCityRiskWeb/static/maps`目录，cncityrisk安装包上传到工作目录
-
-4. 构建并启动Docker容器：
+3. 构建并启动Docker容器：
     ```bash
     docker-compose up -d --build
     ```
 
-5. 访问应用：
+4. 访问应用：
     浏览器打开 `http://localhost` 即可访问应用。
 
 ### 技术说明

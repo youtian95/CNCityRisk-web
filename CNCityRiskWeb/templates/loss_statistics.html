@@ -246,6 +246,12 @@ html, body {
     border-radius: 3px;
 }
 
+.select-box option {
+    background: white;
+    color: black;
+    padding: 5px;
+}
+
 @media (max-width: 768px) {
     .summary-grid {
         grid-template-columns: 1fr;
@@ -299,8 +305,8 @@ body {
                 <label>损失类型:</label>
                 <select id="lossTypeSelector" class="select-box">
                     <option value="DS_Struct" {% if LossType == 'DS_Struct' %}selected{% endif %}>结构损伤状态</option>
-                    <option value="DS_NonStruct_DriftSen" {% if LossType == 'DS_NonStruct_DriftSen' %}selected{% endif %}>非结构损伤(漂移敏感)</option>
-                    <option value="DS_NonStruct_AccelSen" {% if LossType == 'DS_NonStruct_AccelSen' %}selected{% endif %}>非结构损伤(加速度敏感)</option>
+                    <option value="DS_NonStruct_DriftSen" {% if LossType == 'DS_NonStruct_DriftSen' %}selected{% endif %}>非结构损伤状态(变形敏感)</option>
+                    <option value="DS_NonStruct_AccelSen" {% if LossType == 'DS_NonStruct_AccelSen' %}selected{% endif %}>非结构损伤状态(加速度敏感)</option>
                     <option value="RepairCost_Total" {% if LossType == 'RepairCost_Total' %}selected{% endif %}>总修复成本</option>
                     <option value="RepairCost_Struct" {% if LossType == 'RepairCost_Struct' %}selected{% endif %}>结构修复成本</option>
                     <option value="RepairTime" {% if LossType == 'RepairTime' %}selected{% endif %}>修复时间</option>
@@ -733,7 +739,6 @@ function drawContinuousECDFChart(lossValues) {
     if (ecdfChartInstance) {
         ecdfChartInstance.destroy();
     }
-    
     // 计算ECDF数据
     const ecdfData = calculateECDF(sample);
     
@@ -743,21 +748,50 @@ function drawContinuousECDFChart(lossValues) {
         y: point.y
     }));
     
-    // 创建Chart.js图表
+    // 准备数据集
+    const datasets = [{
+        label: '损失累积分布',
+        data: chartData,
+        borderColor: '#1f77b4',
+        backgroundColor: '#1f77b420',
+        borderWidth: 2,
+        fill: false,
+        tension: 0,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        type: 'line'
+    }];
+    
+    // 添加第iSim次模拟的散点数据
+    let scatterData = null;
+    if (currentData.event.loss_statistics && currentData.event.loss_statistics.total_loss_iSim) {
+        const iSimValue = currentData.event.loss_statistics.total_loss_iSim[0] || 0;
+        const percentile = currentData.event.loss_statistics.percentiles_iSim[0] || 0;
+        
+        scatterData = {
+            x: iSimValue,
+            y: percentile,
+            lossType: lossType
+        };
+        
+        // 添加散点数据集
+        datasets.push({
+            label: `第${iSim}次模拟结果`,
+            data: [{ x: iSimValue, y: percentile }],
+            backgroundColor: '#FF6B6B',
+            borderColor: '#FF6B6B',
+            borderWidth: 3,
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            type: 'scatter',
+            showLine: false
+        });
+    }
+      // 创建Chart.js图表
     ecdfChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-            datasets: [{
-                label: '损失累积分布',
-                data: chartData,
-                borderColor: '#1f77b4',
-                backgroundColor: '#1f77b420',
-                borderWidth: 2,
-                fill: false,
-                tension: 0,
-                pointRadius: 0,
-                pointHoverRadius: 3
-            }]
+            datasets: datasets
         },
         options: {
             responsive: true,
@@ -774,18 +808,37 @@ function drawContinuousECDFChart(lossValues) {
                         size: 16,
                         weight: 'bold'
                     }
-                },
+                },                
                 legend: {
                     display: true,
-                    position: 'top'
+                    position: 'top',
+                    labels: {
+                        filter: function(legendItem, chartData) {
+                            // 只显示ECDF曲线的图例，隐藏散点的图例
+                            return !legendItem.text.includes(`第${iSim}次模拟`);
+                        }
+                    }
                 },
                 tooltip: {
                     callbacks: {
                         title: function(context) {
-                            return `损失值: ${context[0].parsed.x.toFixed(2)}`;
+                            const datasetLabel = context[0].dataset.label;
+                            if (datasetLabel.includes(`第${iSim}次模拟`)) {
+                                return `第${iSim}次随机模拟结果`;
+                            } else {
+                                return `损失值: ${context[0].parsed.x.toFixed(2)}`;
+                            }
                         },
                         label: function(context) {
-                            return `累积概率: ${(context.parsed.y * 100).toFixed(1)}%`;
+                            const datasetLabel = context.dataset.label;
+                            if (datasetLabel.includes(`第${iSim}次模拟`)) {
+                                return [
+                                    `损失值: ${context.parsed.x.toLocaleString()}`,
+                                    `分位数: ${(context.parsed.y * 100).toFixed(1)}%`
+                                ];
+                            } else {
+                                return `累积概率: ${(context.parsed.y * 100).toFixed(1)}%`;
+                            }
                         }
                     }
                 }
@@ -825,10 +878,14 @@ function drawContinuousECDFChart(lossValues) {
             }
         }
     });
-    
     // 保存统计数据用于后续显示
     const stats = calculateStatistics(sample);
     window.currentChartStats = { sample, sampleSize, stats };
+    
+    // 保存散点数据用于统计信息显示
+    if (scatterData) {
+        window.currentScatterData = [scatterData];
+    }
 }
 
 // 添加图表下方的统计信息
@@ -876,7 +933,6 @@ function addStatisticsBelow() {
             statsHtml += '</div>';
             statsHtml += '</div>';
         }
-        
     } else {
         // 连续损失统计
         const { stats, sampleSize } = window.currentChartStats;
@@ -891,6 +947,21 @@ function addStatisticsBelow() {
                 <div><strong>75%分位数:</strong> ${stats.q75?.toFixed(2) || 'N/A'}</div>
             </div>
         `;
+        
+        // 添加连续损失类型的散点数据说明
+        if (window.currentScatterData && window.currentScatterData.length > 0) {
+            statsHtml += '<div style="margin-top: 20px; padding: 15px; background: #ffebee; border: 1px solid #FF6B6B; border-radius: 6px;">';
+            statsHtml += `<h6 style="margin: 0 0 10px 0; color: #FF6B6B; text-align: center;">第${iSim}次随机模拟结果 (散点)</h6>`;
+            
+            window.currentScatterData.forEach(point => {
+                statsHtml += `<div style="padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #FF6B6B; text-align: center;">`;
+                statsHtml += `<strong style="color: #FF6B6B;">损失值:</strong> ${point.x.toLocaleString()}<br>`;
+                statsHtml += `<strong style="color: #FF6B6B;">分位数:</strong> ${(point.y * 100).toFixed(1)}%`;
+                statsHtml += `</div>`;
+            });
+            
+            statsHtml += '</div>';
+        }
     }
     
     statsArea.innerHTML = statsHtml;

@@ -15,7 +15,7 @@ click==8.2.0
 click-plugins==1.1.1
 cligj==0.7.2
 cloudpickle==3.1.1
-CNCityRisk==0.1.1
+CNCityRisk==0.2.0
 colorama==0.4.6
 contourpy==1.3.2
 cycler==0.12.1
@@ -29,7 +29,7 @@ et_xmlfile==2.0.0
 fiona==1.10.1
 Flask==3.1.1
 Flask-Compress==1.17
-folium==0.19.5
+folium==0.19.6
 fonttools==4.58.0
 fsspec==2025.3.2
 GDAL==3.11.0
