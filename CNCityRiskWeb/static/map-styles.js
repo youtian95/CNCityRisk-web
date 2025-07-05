@@ -6,7 +6,7 @@
 // 地图样式配置对象
 const MapStyles = {
     // 当前使用的样式（可以通过修改这个值来切换底图）
-    currentStyle: 'stadia_terrain',
+    currentStyle: 'cartodb_light',
       // 底图样式配置
     styles: {
         // Stadia Maps 地形图（推荐）

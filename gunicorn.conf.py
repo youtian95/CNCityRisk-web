@@ -1,6 +1,6 @@
 bind = "0.0.0.0:8000"
 workers = 1
-threads = 1
+threads = 4
 timeout = 120
 worker_class = "gthread"
 reload = True

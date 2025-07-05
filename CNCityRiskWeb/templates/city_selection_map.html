@@ -48,11 +48,13 @@
     font-size: 16px;
     width: 100%;
     margin-top: 10px;
-    transition: background-color 0.3s;
+    transition: all 0.3s ease;
 }
 
 .city-button:hover {
-    background-color: #45a049;
+    opacity: 0.9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
 
 .city-button:disabled {
@@ -131,7 +133,10 @@
     <p><strong>城市:</strong> <span id="cityNameDisplay">-</span></p>
     <p><strong>可用区县:</strong> <span id="districtCount">-</span> 个</p>    
     <button class="city-button" id="ruptureSelectionBtn" onclick="enterRuptureSelection()" style="background-color: #ff9800;">
-        震源选择与设计
+        震源选择与分析
+    </button>
+    <button class="city-button" id="annualizedRiskBtn" onclick="enterAnnualizedRisk()" style="background-color: #9c27b0;">
+        城市地震损失年均超越次数统计
     </button>
 </div>
 
@@ -367,6 +372,14 @@ function enterRuptureSelection() {
     if (selectedCity && selectedProvince) {
         // 跳转到新的震源选择界面
         window.location.href = `/rupture_selection?province=${encodeURIComponent(selectedProvince)}&city=${encodeURIComponent(selectedCity)}`;
+    }
+}
+
+// 进入年化损失分析界面
+function enterAnnualizedRisk() {
+    if (selectedCity && selectedProvince) {
+        // 跳转到年化损失分析界面
+        window.location.href = `/annualized_risk/${encodeURIComponent(selectedCity)}`;
     }
 }
 

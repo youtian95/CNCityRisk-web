@@ -1,3 +1,4 @@
+import CNCityRisk.AnnualizedRisk
 import CNCityRisk.EQsources
 import CNCityRisk.Utilities
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -333,4 +334,87 @@ def get_city_all_ruptures_for_map(city_name):
         return []
 
 
+def get_whole_city_annualized_loss(city_name):
+    """
+    获取指定城市的年均损失超越次数等数据
+    
+    returns:
+        dict: 包含年均损失数据的字典，包含以下键：
+            - 'freq_mag': 震级频率数据。字典格式，包含 {'Magnitude': [float列表], 'Frequency': [float列表]}
+              注意：Frequency为震级年均超越次数（大于等于该震级的年均发生次数）
+              例如: {'Magnitude': [5.0, 6.0, 7.0], 'Frequency': [0.1, 0.05, 0.01]}
+            - 'freq_RepairCost_Total': 总修复成本的频率数据。字典格式，包含 {'RepairCost_Total': [float列表], 'Frequency': [float列表]}
+              例如: {'RepairCost_Total': [1000000.0, 5000000.0], 'Frequency': [0.02, 0.01]}
+            - 'freq_RepairTime': 修复时间的频率数据。字典格式，包含 {'RepairTime': [float列表], 'Frequency': [float列表]}
+              例如: {'RepairTime': [30.0, 90.0, 180.0], 'Frequency': [0.03, 0.015, 0.005]}
+            - 'annual_loss_RepairCost_Total': 总修复成本随时间变化的年损失数据。字典格式，包含 {'Year': [int列表], 'MeanAnnualLoss': [float列表]}
+              例如: {'Year': [1, 5, 10, 20], 'MeanAnnualLoss': [50000.0, 49000.0, 48000.0, 47500.0]}
+            - 'annual_loss_RepairTime': 修复时间随时间变化的年损失数据。字典格式，包含 {'Year': [int列表], 'MeanAnnualLoss': [float列表]}
+              例如: {'Year': [1, 5, 10, 20], 'MeanAnnualLoss': [15.0, 14.8, 14.5, 14.2]}
+        如果没有找到相关数据，返回 None
+    """
+    try:
+        # 构建年均损失数据文件夹路径
+        annualized_loss_dir = Path(CNCityRisk.AnnualizedRisk.RESULTDIR) / city_name
 
+        if not annualized_loss_dir.exists():
+            return None
+        
+        annualized_loss_data = {}
+        
+        # 读取震级频率数据
+        freq_mag_file = annualized_loss_dir / "mean_annual_freq_mag.csv"
+        if freq_mag_file.exists():
+            freq_mag_df = pd.read_csv(freq_mag_file)
+            
+            # 计算震级的年均超越次数
+            # 原始数据是每个震级的年均发生次数，需要转换为超越次数
+            magnitudes = freq_mag_df['Magnitude'].tolist()
+            frequencies = freq_mag_df['Frequency'].tolist()
+            
+            # 将震级和频率配对，然后按震级从小到大排序
+            mag_freq_pairs = list(zip(magnitudes, frequencies))
+            mag_freq_pairs.sort(key=lambda x: x[0])  # 按震级排序
+            
+            # 分离排序后的震级和频率
+            sorted_magnitudes = [pair[0] for pair in mag_freq_pairs]
+            sorted_frequencies = [pair[1] for pair in mag_freq_pairs]
+            
+            # 计算超越次数：对于每个震级，累计大于等于该震级的所有发生次数
+            exceedance_frequencies = []
+            for i in range(len(sorted_magnitudes)):
+                # 累计当前震级及更高震级的发生次数
+                exceedance_freq = sum(sorted_frequencies[j] for j in range(i, len(sorted_frequencies)))
+                exceedance_frequencies.append(exceedance_freq)
+            
+            annualized_loss_data['freq_mag'] = {
+                'Magnitude': sorted_magnitudes,
+                'Frequency': exceedance_frequencies
+            }
+        
+        # 读取损失类型的频率和年损失数据
+        loss_types = ['RepairCost_Total', 'RepairTime']
+        for loss_type in loss_types:
+            # 读取损失频率数据
+            freq_loss_file = annualized_loss_dir / f"mean_annual_freq_{loss_type}.csv"
+            if freq_loss_file.exists():
+                freq_loss_df = pd.read_csv(freq_loss_file)
+                annualized_loss_data[f'freq_{loss_type}'] = {
+                    loss_type: freq_loss_df[loss_type].tolist(),
+                    'Frequency': freq_loss_df['Frequency'].tolist()
+                }
+            
+            # 读取年损失随时间变化数据
+            annual_loss_file = annualized_loss_dir / f"mean_annual_loss_with_year_{loss_type}.csv"
+            if annual_loss_file.exists():
+                annual_loss_df = pd.read_csv(annual_loss_file)
+                annualized_loss_data[f'annual_loss_{loss_type}'] = {
+                    'Year': annual_loss_df['Year'].tolist(),
+                    'MeanAnnualLoss': annual_loss_df['MeanAnnualLoss'].tolist()
+                }
+        
+        return annualized_loss_data if annualized_loss_data else None
+
+    except Exception as e:
+        print(f"Error getting annualized loss data for {city_name}: {e}")
+        return None

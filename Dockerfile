@@ -6,7 +6,7 @@ WORKDIR /app
 # 创建conda环境并安装特定版本的GDAL依赖
 RUN conda create -n cncityriskweb python=3.12 -y
 
-# 复制依赖文件
+# 复制依赖文件（注意检查 requirements.txt 编码为 UTF-8）
 COPY requirements.txt .
 COPY cncityrisk-0.2.0-py3-none-any.whl .
 RUN grep -v "GDAL" requirements.txt > requirements_no_gdal.txt

@@ -615,3 +615,45 @@ def get_im_grid_data():
     except Exception as e:
         app.logger.error(f'获取IM网格数据时发生错误: {e}')
         return jsonify({'error': '服务器内部错误'}), 500
+
+@app.route('/annualized_risk/<city_name>')
+def annualized_risk(city_name):
+    """
+    年化损失分析页面路由
+    显示指定城市的年化损失分析页面
+    """
+    return render_template('annualized_risk.html', city_name=city_name)
+
+
+@app.route('/get_whole_city_annualized_loss/<city_name>')
+def get_whole_city_annualized_loss(city_name):
+    """
+    获取指定城市的年化损失数据
+    
+    返回格式为JSON，包含年化损失和相关信息
+
+    returns:
+        dict: 包含年均损失数据的字典，包含以下键：
+            - 'freq_mag': 震级频率数据。字典格式，包含 {'Magnitude': [float列表], 'Frequency': [float列表]}
+              例如: {'Magnitude': [5.0, 6.0, 7.0], 'Frequency': [0.1, 0.05, 0.01]}
+            - 'freq_RepairCost_Total': 总修复成本的频率数据。字典格式，包含 {'RepairCost_Total': [float列表], 'Frequency': [float列表]}
+              例如: {'RepairCost_Total': [1000000.0, 5000000.0], 'Frequency': [0.02, 0.01]}
+            - 'freq_RepairTime': 修复时间的频率数据。字典格式，包含 {'RepairTime': [float列表], 'Frequency': [float列表]}
+              例如: {'RepairTime': [30.0, 90.0, 180.0], 'Frequency': [0.03, 0.015, 0.005]}
+            - 'annual_loss_RepairCost_Total': 总修复成本随时间变化的年损失数据。字典格式，包含 {'Year': [int列表], 'MeanAnnualLoss': [float列表]}
+              例如: {'Year': [1, 5, 10, 20], 'MeanAnnualLoss': [50000.0, 49000.0, 48000.0, 47500.0]}
+            - 'annual_loss_RepairTime': 修复时间随时间变化的年损失数据。字典格式，包含 {'Year': [int列表], 'MeanAnnualLoss': [float列表]}
+              例如: {'Year': [1, 5, 10, 20], 'MeanAnnualLoss': [15.0, 14.8, 14.5, 14.2]}
+    """
+    try:
+        # 从模型中获取年化损失数据
+        annualized_loss_data = models.get_whole_city_annualized_loss(city_name)
+        
+        if not annualized_loss_data:
+            return jsonify({'error': f'城市 {city_name} 的年化损失数据不存在'}), 404
+        
+        return jsonify(annualized_loss_data)
+    
+    except Exception as e:
+        app.logger.error(f"获取城市 {city_name} 年化损失数据时发生错误: {e}")
+        return jsonify({'error': '服务器内部错误'}), 500
