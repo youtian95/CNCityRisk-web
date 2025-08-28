@@ -3,15 +3,16 @@
 {% block head %}
 {{ super() }}
 <!-- OpenLayers CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+<link rel="stylesheet" href="{{ url_for('static', filename='ol/ol.css') }}" type="text/css">
 <!-- OpenLayers JavaScript -->
-<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<script src="{{ url_for('static', filename='ol/ol.js') }}"></script>
 <!-- D3.js for contour generation -->
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://d3js.org/d3-contour.v4.min.js"></script>
 
 <script src="{{ url_for('static', filename='map-styles.js') }}"></script>
 <script src="{{ url_for('static', filename='map-common.js') }}"></script>
+<script src="{{ url_for('static', filename='city-outline.js') }}"></script>
 
 <style>
 .map-container {
@@ -288,6 +289,7 @@
 let map;
 let imLayer;
 let ruptureLayer; // 震源矩形框图层
+let cityOutline; // 城市轮廓模块
 let currentCity = '{{ current_city }}';
 let currentRupture = parseInt('{{ eq_i_rup }}');
 let currentPeriodIndex = parseInt('{{ period_index }}');
@@ -317,6 +319,27 @@ async function initializeMap() {
     // 添加底图切换控件
     const styleControl = MapStyles.createOpenLayersStyleControl(map);
     map.addControl(styleControl);
+    
+    // 初始化城市轮廓模块（只显示当前城市，不可点击）
+    cityOutline = new CityOutline(map, {
+        clickable: false,
+        hoverable: false,
+        filterCity: currentCity,
+        zIndex: 50, // 设置在数据图层之下，但在底图之上
+        defaultStyle: {
+            fillColor: 'rgba(0, 0, 0, 0)', // 完全透明的填充
+            strokeColor: '#2196F3',
+            strokeWidth: 2
+        }
+    });
+    
+    // 加载城市轮廓数据
+    try {
+        await cityOutline.loadCityData();
+        console.log('城市轮廓加载成功');
+    } catch (error) {
+        console.error('城市轮廓加载失败:', error);
+    }
     
     // 创建震源矩形框图层
     ruptureLayer = await createRuptureLayer(map, currentCity, currentRupture, 1000);

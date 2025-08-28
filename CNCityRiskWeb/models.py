@@ -251,15 +251,16 @@ def convert_shapely_to_leaflet_format(polygon):
             exterior_coords = list(polygon.exterior.coords)
             # 转换为[lat, lng]格式
             leaflet_coords = [[coord[1], coord[0]] for coord in exterior_coords]
-            coordinates = leaflet_coords
+            coordinates = [leaflet_coords]  # 包装成数组格式以保持一致性
             
         elif isinstance(polygon, MultiPolygon):
-            # 多个多边形，取最大的一个
-            largest_polygon = max(polygon.geoms, key=lambda p: p.area)
-            exterior_coords = list(largest_polygon.exterior.coords)
-            # 转换为[lat, lng]格式
-            leaflet_coords = [[coord[1], coord[0]] for coord in exterior_coords]
-            coordinates = leaflet_coords
+            # 多个多边形，返回所有多边形的坐标
+            coordinates = []
+            for geom in polygon.geoms:
+                exterior_coords = list(geom.exterior.coords)
+                # 转换为[lat, lng]格式
+                leaflet_coords = [[coord[1], coord[0]] for coord in exterior_coords]
+                coordinates.append(leaflet_coords)
         
         return {
             'center': center,

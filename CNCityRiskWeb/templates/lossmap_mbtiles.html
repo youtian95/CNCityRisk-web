@@ -4,14 +4,15 @@
 
 {{ super() }}
 <!-- OpenLayers CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+<link rel="stylesheet" href="{{ url_for('static', filename='ol/ol.css') }}" type="text/css">
 <!-- OpenLayers JavaScript -->
-<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<script src="{{ url_for('static', filename='ol/ol.js') }}"></script>
 <!-- D3.js for contour generation -->
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://d3js.org/d3-contour.v4.min.js"></script>
 <script src="{{ url_for('static', filename='map-styles.js') }}"></script>
 <script src="{{ url_for('static', filename='map-common.js') }}"></script>
+<script src="{{ url_for('static', filename='city-outline.js') }}"></script>
 
 <style>
 .map-container {
@@ -311,6 +312,7 @@ let map;
 let vectorLayer; // 建筑群损失图层
 let contourLayer; // IM等值线图层
 let ruptureLayer; // 震源轮廓图层
+let cityOutline; // 城市轮廓模块
 let currentCity = '{{ current_city }}';
 let currentRupture = parseInt('{{ eq_i_rup }}' || '0');
 let currentISim = parseInt('{{ iSim|default(0) }}');
@@ -363,7 +365,29 @@ async function initMap() {
 
     // 添加底图切换控件
     const styleControl = MapStyles.createOpenLayersStyleControl(map);
-    map.addControl(styleControl);    // 初始化所有图层
+    map.addControl(styleControl);
+    
+    // 初始化城市轮廓模块（只显示当前城市，不可点击）
+    cityOutline = new CityOutline(map, {
+        clickable: false,
+        hoverable: false,
+        filterCity: currentCity,
+        useGeographic: true, // 强制启用地理坐标模式，因为我们使用了 ol.proj.useGeographic()
+        zIndex: 50, // 设置在数据图层之下，但在底图之上
+        defaultStyle: {
+            fillColor: 'rgba(0, 0, 0, 0)', // 完全透明的填充
+            strokeColor: '#2196F3',
+            strokeWidth: 2
+        }
+    });
+    
+    // 加载城市轮廓数据
+    try {
+        await cityOutline.loadCityData();
+        console.log('城市轮廓加载成功');
+    } catch (error) {
+        console.error('城市轮廓加载失败:', error);
+    }    // 初始化所有图层
     await loadIMMetadata(); // 先加载IM元数据
     initializePeriodSelector(); // 初始化周期选择器
     updateCurrentPeriodDisplay(); // 更新周期显示
@@ -605,7 +629,9 @@ function addVectorTileLayer(tileUrl, bounds) {
         format: new ol.format.MVT(),
         url: tileUrl,
         maxZoom: 16,
-        minZoom: 8
+        minZoom: 8,
+        projection: 'EPSG:3857', // 明确指定矢量瓦片使用Web Mercator
+        overlaps: false
     });
     
     const styleFunction = function(feature) {

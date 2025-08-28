@@ -282,12 +282,122 @@ const MapStyles = {
         return new ol.control.Control({
             element: element
         });
+    },
+
+    /**
+     * 应用 OpenLayers 控件样式修复
+     * 这个函数会创建并注入必要的CSS样式来修复OpenLayers控件位置
+     */
+    applyOpenLayersControlStyles: function() {
+        // 检查是否已经添加了样式
+        if (document.getElementById('ol-controls-fix')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'ol-controls-fix';
+        style.textContent = `
+            /* OpenLayers控件位置修复样式 */
+            .ol-attribution {
+                bottom: 3.5em !important;
+                right: 0.5em !important;
+                top: auto !important;
+                left: auto !important;
+                position: absolute !important;
+                background: rgba(255, 255, 255, 0.8) !important;
+                border-radius: 3px !important;
+            }
+
+            .ol-attribution ul {
+                margin: 0 !important;
+                padding: 0 !important;
+                list-style: none !important;
+                font-size: 11px !important;
+            }
+
+            .ol-attribution li {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* 保持 attribution 的默认折叠行为 */
+            .ol-attribution.ol-collapsed ul {
+                display: none !important;
+            }
+
+            .ol-attribution:not(.ol-collapsed) ul {
+                display: block !important;
+                margin-left: 0.5em !important;
+            }
+
+            .ol-zoom {
+                top: 0.5em !important;
+                left: 0.5em !important;
+                bottom: auto !important;
+                right: auto !important;
+                position: absolute !important;
+            }
+
+            .ol-control {
+                position: absolute !important;
+            }
+
+            .ol-control button {
+                background: rgba(255, 255, 255, 0.8) !important;
+                border: none !important;
+                border-radius: 2px !important;
+            }
+
+            .ol-full-screen {
+                top: 0.5em !important;
+                right: 0.5em !important;
+                position: absolute !important;
+            }
+
+            .ol-rotate {
+                top: 4.5em !important;
+                left: 0.5em !important;
+                position: absolute !important;
+            }
+
+            .map-style-control {
+                position: absolute !important;
+                bottom: 0.5em !important;
+                right: 0.5em !important;
+                background: rgba(255, 255, 255, 0.9) !important;
+                padding: 5px !important;
+                border-radius: 5px !important;
+                border: 1px solid #ccc !important;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+            }
+
+            .map-style-control select {
+                border: none !important;
+                background: transparent !important;
+                font-size: 12px !important;
+                padding: 2px !important;
+                outline: none !important;
+                cursor: pointer !important;
+            }
+        `;
+        
+        document.head.appendChild(style);
     }
 };
 
 // 如果在浏览器环境中，将 MapStyles 添加到全局作用域
 if (typeof window !== 'undefined') {
     window.MapStyles = MapStyles;
+    
+    // 页面加载完成后自动应用OpenLayers控件样式
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            MapStyles.applyOpenLayersControlStyles();
+        });
+    } else {
+        // 如果文档已经加载完成，直接应用样式
+        MapStyles.applyOpenLayersControlStyles();
+    }
 }
 
 // 如果在 Node.js 环境中，导出模块

@@ -14,21 +14,7 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
 
 除了从源代码构建之外，还可以使用预构建的 Docker 镜像进行快速部署。这种方法特别适合生产环境，能够保证环境一致性并节省构建时间。
 
-### 1. 上传镜像到 DockerHub (开发者操作)
-
-1. 构建并标记镜像:
-   ```bash
-   # 登录到 DockerHub
-   docker login
-   
-   # 构建镜像并标记
-   docker build -t youtian95/cncityrisk:latest .
-   
-   # 推送到 DockerHub
-   docker push youtian95/cncityrisk:latest
-   ```
-
-### 2. 从 DockerHub 部署 (服务器操作)
+### 从 DockerHub 部署 (服务器操作)
 
 1. 创建工作目录并进入:
    ```bash
@@ -68,7 +54,7 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
 6. 访问应用:
    浏览器打开 `http://服务器IP地址` 即可访问应用。
 
-### 3. 更新应用 (使用 DockerHub)
+### 更新应用 (使用 DockerHub)
 
 当应用需要更新时:
 
@@ -163,7 +149,21 @@ docker-compose down
 
 ## 本地开发
 
-启动开发服务器：
+### 启动开发服务器
+
   ```bash
   flask run
   ```
+
+### 上传镜像到 DockerHub
+
+```bash
+
+# 构建镜像并标记
+docker build -t youtian95/cncityrisk:latest .
+
+# 推送到 DockerHub
+docker push youtian95/cncityrisk:latest
+```
+
+

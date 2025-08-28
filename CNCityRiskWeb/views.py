@@ -6,6 +6,9 @@ from urllib.parse import unquote, quote
 import io
 import gzip
 import json
+import ijson
+import h5py
+import numpy as np
 
 from CNCityRiskWeb import app
 from CNCityRiskWeb import models
@@ -290,7 +293,7 @@ def get_city_coordinates():
             "province": "省份名",
             "center": [纬度, 经度],  # 城市中心坐标
             "bounds": [[south, west], [north, west], [north, east], [south, east]],  # 城市边界矩形
-            "coordinates": [[纬度1, 经度1], [纬度2, 经度2], ...],  # 城市边界多边形坐标点数组
+            "coordinates": [[[纬度1, 经度1], [纬度2, 经度2], ...], [[纬度3, 经度3], ...]],  # 城市边界多边形数组，每个子数组是一个多边形的坐标点
             "district_count": 区县数量
         }
         
@@ -300,7 +303,7 @@ def get_city_coordinates():
                 "province": "省份名",
                 "center": [纬度, 经度],
                 "bounds": [[south, west], [north, west], [north, east], [south, east]],
-                "coordinates": [[纬度1, 经度1], [纬度2, 经度2], ...],
+                "coordinates": [[[纬度1, 经度1], [纬度2, 经度2], ...], [[纬度3, 经度3], ...]],  # 城市边界多边形数组，每个子数组是一个多边形的坐标点
                 "district_count": 区县数量
             },
             ...
@@ -310,7 +313,7 @@ def get_city_coordinates():
         - 坐标格式统一为 [纬度, 经度]
         - center: 城市的地理中心点坐标
         - bounds: 城市的最小外接矩形，按 [south, west], [north, west], [north, east], [south, east] 顺序
-        - coordinates: 城市实际边界的多边形坐标点数组
+        - coordinates: 城市实际边界的多边形数组，每个元素是一个多边形的坐标点数组。对于单个多边形的城市，仍然是数组格式[[多边形坐标]]；对于多个多边形的城市，包含所有多边形的坐标[多边形1坐标, 多边形2坐标, ...]
         - 只返回在系统中有区县数据支持的城市
         - 如果请求的城市不存在，返回 404 错误
     
@@ -471,18 +474,54 @@ def IMMap():
     except ValueError:
         eq_i_rup = 0
         period_index = 0
-    # 检查IM网格数据文件是否存在
-    im_data_path = Path(app.static_folder) / 'maps' / 'mapdata' / f'IM_mapdata_{current_city}.json'
+    # 检查IM网格数据文件是否存在 - 更新为HDF5格式
+    im_data_path = Path(app.static_folder) / 'maps' / 'IMmap' / f'IM_mapdata_{current_city}.hdf5'
     
     if not im_data_path.exists():
         app.logger.error(f'IM grid data file not found: {im_data_path}')
         flash(f'城市 {current_city} 的IM网格数据不存在', 'error')
         return redirect(url_for('rupture_selection', city=current_city))
-    # 从JSON文件获取IM元数据
+    
+    # 从HDF5文件获取IM元数据
     try:
-        with open(im_data_path, 'r', encoding='utf-8') as f:
-            im_data = json.load(f)
-        im_metadata = im_data.get('metadata', {})
+        with h5py.File(im_data_path, 'r') as hf:
+            # 读取全局元数据并转换为JSON可序列化的格式
+            im_metadata = {}
+            for key, value in hf.attrs.items():
+                if isinstance(value, np.integer):
+                    im_metadata[key] = int(value)
+                elif isinstance(value, np.floating):
+                    im_metadata[key] = float(value)
+                elif isinstance(value, np.ndarray):
+                    im_metadata[key] = value.tolist()
+                elif isinstance(value, bytes):
+                    im_metadata[key] = value.decode('utf-8')
+                else:
+                    im_metadata[key] = value
+            
+            # 处理periods数据为前端期望的格式
+            if 'periods' in hf:
+                periods_array = hf['periods'][:]
+                im_metadata['periods'] = {}
+                for i, p in enumerate(periods_array):
+                    period_val = float(p)
+                    if np.isfinite(period_val):
+                        im_metadata['periods'][i] = {
+                            'period_value': period_val,
+                            'index': i
+                        }
+            else:
+                im_metadata['periods'] = {}
+            
+            # 验证和修正参数范围
+            total_ruptures = im_metadata.get('total_ruptures', 0)
+            total_periods = im_metadata.get('total_periods', 0)
+            
+            if not (0 <= eq_i_rup < total_ruptures):
+                eq_i_rup = 0
+            if not (0 <= period_index < total_periods):
+                period_index = 0
+                
     except Exception as e:
         app.logger.error(f'Failed to read IM metadata from {im_data_path}: {e}')
         flash(f'无法读取城市 {current_city} 的IM地图元数据', 'error')
@@ -501,12 +540,13 @@ def IMMap():
 def get_im_grid_data():
     """
     获取IM网格数据用于等值线生成
-    从 IM_median_mapdata_{city}.json 文件中提取指定破裂面和周期的数据
+    从 IM_mapdata_{city}.hdf5 文件中提取指定破裂面和周期的数据
     """
     current_city = request.args.get('city')
     eq_i_rup = request.args.get('eq_i_rup')
     period_index = request.args.get('period_index')
     isim = request.args.get('isim', default=None)
+    
     if isim is not None:
         try:
             isim = int(isim)
@@ -523,95 +563,144 @@ def get_im_grid_data():
     except ValueError:
         return jsonify({'error': '破裂面索引和周期索引必须是整数'}), 400
     
-    # 构建IM网格数据文件路径
-    im_data_path = Path(app.static_folder) / 'maps' / 'mapdata' / f'IM_mapdata_{current_city}.json'
+    # 构建IM网格数据文件路径 - 更新为HDF5格式
+    im_data_path = Path(app.static_folder) / 'maps' / 'IMmap' / f'IM_mapdata_{current_city}.hdf5'
     
     if not im_data_path.exists():
         return jsonify({'error': f'城市 {current_city} 的IM网格数据文件不存在'}), 404
     
     try:
-        # 读取IM网格数据文件
-        with open(im_data_path, 'r', encoding='utf-8') as f:
-            im_data = json.load(f)
-        
-        # 验证破裂面和周期索引的有效性
-        metadata = im_data.get('metadata', {})
-        total_ruptures = metadata.get('total_ruptures', 0)
-        total_periods = metadata.get('total_periods', 0)
-        selected_iSim = metadata.get('selected_iSim')
-        if isim is not None and isim != selected_iSim:
-            return jsonify({'error': f'指定的isim索引 {isim} 与元数据中的选定索引 {selected_iSim} 不匹配'}), 400
-        
-        if eq_i_rup >= total_ruptures or eq_i_rup < 0:
-            return jsonify({'error': f'破裂面索引 {eq_i_rup} 超出范围 [0, {total_ruptures-1}]'}), 400
-        
-        if period_index >= total_periods or period_index < 0:
-            return jsonify({'error': f'周期索引 {period_index} 超出范围 [0, {total_periods-1}]'}), 400
-        
-        # 提取指定破裂面和周期的网格数据
-        grid_data = []
-        sites = im_data.get('sites', [])
-        
-        app.logger.info(f'开始提取IM网格数据: 城市={current_city}, 破裂面={eq_i_rup}, 周期={period_index}, 总站点数={len(sites)}')
-        
-        for site in sites:
-            lon = site.get('lon')
-            lat = site.get('lat')
-            if isim is None:
-                # 使用IM中值云图数据
-                im_matrix = site.get('im_median_matrix')
-            else:
-                # 使用IM随机云图数据
-                im_matrix = site.get('im_random_matrix')
-            
-            if lon is None or lat is None or im_matrix is None:
-                continue
-            
-            # 检查im_matrix结构并提取IM值
-            if (isinstance(im_matrix, list) and 
-                eq_i_rup < len(im_matrix) and 
-                isinstance(im_matrix[eq_i_rup], list) and 
-                period_index < len(im_matrix[eq_i_rup])):
-                
-                if isim is None:
-                    # 使用IM中值云图数据
-                    im_value = im_matrix[eq_i_rup][period_index]
+        with h5py.File(im_data_path, 'r') as hf:
+            # 读取全局元数据并转换为JSON可序列化的格式
+            metadata = {}
+            for key, value in hf.attrs.items():
+                if isinstance(value, np.integer):
+                    metadata[key] = int(value)
+                elif isinstance(value, np.floating):
+                    metadata[key] = float(value)
+                elif isinstance(value, np.ndarray):
+                    metadata[key] = value.tolist()
+                elif isinstance(value, bytes):
+                    metadata[key] = value.decode('utf-8')
                 else:
-                    # 使用IM随机云图数据    
-                    im_value = im_matrix[eq_i_rup][period_index][0]
+                    metadata[key] = value
+            
+            total_ruptures = metadata.get('total_ruptures', 0)
+            total_periods = metadata.get('total_periods', 0)
+            selected_iSim = metadata.get('selected_iSim', 0)
+            
+            # 验证参数范围
+            if not (0 <= eq_i_rup < total_ruptures):
+                return jsonify({'error': f'破裂面索引 {eq_i_rup} 超出范围 [0, {total_ruptures-1}]'}), 400
+            
+            if not (0 <= period_index < total_periods):
+                return jsonify({'error': f'周期索引 {period_index} 超出范围 [0, {total_periods-1}]'}), 400
+            
+            # 如果指定了isim，验证范围
+            if isim is not None and isim != selected_iSim:
+                return jsonify({'error': f'指定的isim索引 {isim} 与HDF5文件中的选定索引 {selected_iSim} 不匹配'}), 400
+            
+            # 读取站点坐标数据
+            site_coords = hf['site_coordinates']
+            site_ids = site_coords['site_id'][:]
+            longitudes = site_coords['longitude'][:]
+            latitudes = site_coords['latitude'][:]
+            
+            # 读取周期数据
+            periods = hf['periods'][:]
+            
+            # 读取指定破裂面的数据
+            rupture_group_name = f'rupture_{eq_i_rup}'
+            if rupture_group_name not in hf:
+                return jsonify({'error': f'破裂面 {eq_i_rup} 的数据不存在'}), 404
+            
+            rupture_group = hf[rupture_group_name]
+            rupture_metadata = {}
+            for key, value in rupture_group.attrs.items():
+                if isinstance(value, np.integer):
+                    rupture_metadata[key] = int(value)
+                elif isinstance(value, np.floating):
+                    rupture_metadata[key] = float(value)
+                elif isinstance(value, np.ndarray):
+                    rupture_metadata[key] = value.tolist()
+                elif isinstance(value, bytes):
+                    rupture_metadata[key] = value.decode('utf-8')
+                else:
+                    rupture_metadata[key] = value
+            
+            # 根据isim参数选择数据集：isim为None时使用中值数据，否则使用随机数据
+            dataset_name = 'im_median' if isim is None else 'im_random'
+            
+            if dataset_name not in rupture_group:
+                return jsonify({'error': f'破裂面 {eq_i_rup} 的{dataset_name}数据不存在'}), 404
+            
+            # 读取IM数据 - 形状为 [n_sites, n_periods]
+            im_data = rupture_group[dataset_name][:, period_index]
+            
+            # 构建网格数据
+            grid_data = []
+            for lon, lat, im_value in zip(longitudes, latitudes, im_data):
+                if np.isfinite(im_value) and im_value > 0:
+                    grid_data.append([float(lon), float(lat), float(im_value)])
+            
+            # 计算数据边界
+            bounds = {}
+            if grid_data:
+                lons = [point[0] for point in grid_data]
+                lats = [point[1] for point in grid_data]
+                values = [point[2] for point in grid_data]
                 
-                # 检查IM值的有效性
-                if im_value is not None and not (isinstance(im_value, float) and (im_value != im_value)):  # 检查NaN
-                    grid_data.append([lon, lat, im_value])
-        
-        app.logger.info(f'IM网格数据提取完成: 有效数据点 {len(grid_data)} 个')
-        
-        # 返回网格数据和元数据
-        response_data = {
-            'grid_data': grid_data,
-            'metadata': {
-                'city': current_city,
-                'rupture_index': eq_i_rup,
-                'period_index': period_index,
-                'total_points': len(grid_data),
-                'rupture_info': metadata.get('ruptures', {}).get(str(eq_i_rup), {}),
-                'period_info': metadata.get('periods', {}).get(str(period_index), {}),
-                'bounds': {
-                    'min_lon': min(point[0] for point in grid_data) if grid_data else None,
-                    'max_lon': max(point[0] for point in grid_data) if grid_data else None,
-                    'min_lat': min(point[1] for point in grid_data) if grid_data else None,
-                    'max_lat': max(point[1] for point in grid_data) if grid_data else None,
-                    'min_value': min(point[2] for point in grid_data) if grid_data else None,
-                    'max_value': max(point[2] for point in grid_data) if grid_data else None
+                bounds = {
+                    'min_lon': min(lons),
+                    'max_lon': max(lons),
+                    'min_lat': min(lats),
+                    'max_lat': max(lats),
+                    'min_value': min(values),
+                    'max_value': max(values)
                 }
-            }
-        }
-        
-        return jsonify(response_data)
-        
-    except json.JSONDecodeError as e:
-        app.logger.error(f'解析IM数据文件失败: {e}')
-        return jsonify({'error': 'IM数据文件格式错误'}), 500
+            
+            # 返回结果
+            return jsonify({
+                'grid_data': grid_data,
+                'metadata': {
+                    'city': current_city,
+                    'rupture_index': eq_i_rup,
+                    'period_index': period_index,
+                    'data_type': dataset_name,
+                    'total_points': len(grid_data),
+                    'total_sites': len(site_ids),
+                    'rupture_info': {
+                        'rupture_id': rupture_metadata.get('rupture_id', ''),
+                        'magnitude': rupture_metadata.get('magnitude', 0.0),
+                        'index': rupture_metadata.get('index', eq_i_rup)
+                    },
+                    'period_info': {
+                        'period_value': float(periods[period_index]),
+                        'index': period_index
+                    },
+                    'hdf5_metadata': {
+                        'total_ruptures': total_ruptures,
+                        'total_periods': total_periods,
+                        'selected_iSim': selected_iSim,
+                        'data_structure': metadata.get('description', '')
+                    },
+                    'bounds': bounds
+                }
+            })
+    
+    except (OSError, IOError) as e:
+        # HDF5文件相关的IO错误
+        app.logger.error(f'读取HDF5文件失败: {e}')
+        return jsonify({'error': 'HDF5数据文件格式错误或损坏'}), 500
+    except KeyError as e:
+        app.logger.error(f'HDF5文件中缺少必需的数据集: {e}')
+        return jsonify({'error': f'数据文件中缺少必需的数据: {e}'}), 500
+    except FileNotFoundError as e:
+        app.logger.error(f'IM数据文件未找到: {e}')
+        return jsonify({'error': 'IM数据文件不存在'}), 404
+    except MemoryError as e:
+        app.logger.error(f'内存不足，无法处理IM数据文件: {e}')
+        return jsonify({'error': '数据文件过大，内存不足'}), 507
     except Exception as e:
         app.logger.error(f'获取IM网格数据时发生错误: {e}')
         return jsonify({'error': '服务器内部错误'}), 500

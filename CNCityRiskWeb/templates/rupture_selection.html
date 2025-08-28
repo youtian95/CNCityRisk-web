@@ -3,9 +3,9 @@
 {% block head %}
 {{ super() }}
 <!-- OpenLayers CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@latest/ol.css" type="text/css">
+<link rel="stylesheet" href="{{ url_for('static', filename='ol/ol.css') }}" type="text/css">
 <!-- OpenLayers JavaScript -->
-<script src="https://cdn.jsdelivr.net/npm/ol@latest/dist/ol.js"></script>
+<script src="{{ url_for('static', filename='ol/ol.js') }}"></script>
 <script src="{{ url_for('static', filename='map-styles.js') }}"></script>
 <style>
     .container {
@@ -29,6 +29,7 @@
     #map {
         width: 100%;
         height: 100%;
+        position: relative;
     }
     
     .form-group {
@@ -357,22 +358,26 @@
         }
         
         const cityData = cityCoordinates[currentCity];
-        const polygonCoords = cityData.coordinates;
+        const polygonCoordsArray = cityData.coordinates; // 现在是多边形数组
         
-        // 坐标格式已经是[lat, lng]，需要转换为[lng, lat]再投影到Web Mercator
-        const coordinates = [polygonCoords.map(coord => ol.proj.fromLonLat([coord[1], coord[0]]))];
-        
-        // 创建多边形几何
-        const polygon = new ol.geom.Polygon(coordinates);
-        
-        // 创建要素
-        const feature = new ol.Feature({
-            geometry: polygon,
-            name: currentCity
+        // 为每个多边形创建要素
+        polygonCoordsArray.forEach((polygonCoords, index) => {
+            // 坐标格式已经是[lat, lng]，需要转换为[lng, lat]再投影到Web Mercator
+            const coordinates = [polygonCoords.map(coord => ol.proj.fromLonLat([coord[1], coord[0]]))];
+            
+            // 创建多边形几何
+            const polygon = new ol.geom.Polygon(coordinates);
+            
+            // 创建要素
+            const feature = new ol.Feature({
+                geometry: polygon,
+                name: currentCity,
+                polygonIndex: index // 添加索引以区分同一城市的不同多边形
+            });
+            
+            // 添加到城市矢量源
+            cityVectorSource.addFeature(feature);
         });
-        
-        // 添加到城市矢量源
-        cityVectorSource.addFeature(feature);
     }
     // 显示所有震源多边形
     function displayAllRuptures() {
