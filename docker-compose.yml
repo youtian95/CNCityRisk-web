@@ -4,22 +4,19 @@ services:
     restart: always
     networks:
       - app-network
-    volumes:
-      - ./CNCityRiskWeb/static/maps:/app/CNCityRiskWeb/static/maps
-      - ./gunicorn.conf.py:/app/gunicorn.conf.py
     environment:
       - FLASK_ENV=production
       - FLASK_DEBUG=False
       - PYTHONUNBUFFERED=1
   
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    image: youtian95/cncityrisk-nginx:latest
     restart: always
     ports:
       - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - ./CNCityRiskWeb/static:/app/CNCityRiskWeb/static
     depends_on:
       - flask
     networks:

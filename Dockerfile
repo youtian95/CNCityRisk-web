@@ -8,13 +8,13 @@ RUN conda create -n cncityriskweb python=3.12 -y
 
 # 复制依赖文件（注意检查 requirements.txt 编码为 UTF-8）
 COPY requirements.txt .
-COPY cncityrisk-0.3.0-py3-none-any.whl .
+COPY cncityrisk-0.3.2-py3-none-any.whl .
 RUN grep -v "GDAL" requirements.txt > requirements_no_gdal.txt
 
 # 安装Python依赖
 RUN conda run -n cncityriskweb pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 RUN conda install -n cncityriskweb -c conda-forge gdal=3.11.0 python=3.12 -y \
-    && conda run -n cncityriskweb pip install cncityrisk-0.3.0-py3-none-any.whl \
+    && conda run -n cncityriskweb pip install cncityrisk-0.3.2-py3-none-any.whl \
     && conda run -n cncityriskweb pip install -r requirements_no_gdal.txt \
     && conda run -n cncityriskweb pip install gunicorn
 
