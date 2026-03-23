@@ -2,115 +2,106 @@
 
 CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序，使用 Flask 框架构建。
 
-## [网站地址](http://cncityrisk.youtian95.cn/)
+网站地址：[http://cncityrisk.youtian95.cn/](http://cncityrisk.youtian95.cn/)
+CHANGELOG: [CHANGELOG.md](CHANGELOG.md)
 
 [![BldLoss](CNCityRiskWeb/static/images/BldLoss.png)](http://cncityrisk.youtian95.cn/)
 
-## 说明文档
+## 本地开发
 
-* [文档](https://youtian95.github.io/2025/01/09/CNCityRiskMap/)
+### 本地调试
 
----
+  ```bash
+  python -m flask run
+  ```
 
-## 使用 DockerHub 部署
+  然后访问 [http://localhost:8000/](http://localhost:8000/) 。
 
-### 从 DockerHub 部署 (服务器操作)
+### 本地运行容器
 
-1. 创建工作目录并进入:
-   ```bash
-   mkdir CNCityRisk-web
-   cd CNCityRisk-web
-   ```
+  ```bash
+  docker compose up -d --build
+  ```
 
-2. 创建 `docker-compose.yml`（可手动编辑或直接从仓库复制粘贴以下内容）:
-   ```bash
-   cat > docker-compose.yml <<'EOF'
-   services:
-     flask:
-       image: youtian95/cncityrisk:latest
-       restart: always
-       networks:
-         - app-network
-       environment:
-         - FLASK_ENV=production
-         - FLASK_DEBUG=False
-         - PYTHONUNBUFFERED=1
+  然后可访问 [http://localhost:8000/](http://localhost:8000/) 。
 
-     nginx:
-       image: youtian95/cncityrisk-nginx:latest
-       restart: always
-       ports:
-         - "80:80"
-       depends_on:
-         - flask
-       networks:
-         - app-network
+### 需要的数据文件
 
-   networks:
-     app-network:
-       driver: bridge
-   EOF
-   ```
+程序运行时需要以下目录和文件：
 
-4. 拉取镜像并启动服务:
-   ```bash
-   docker-compose pull
-   docker-compose up -d
-   ```
+1. 建筑群损失矢量瓦片（MBTiles）
+   - 目录：`CNCityRiskWeb/static/maps/mbtiles/`
+   - 文件：`RegionalLoss_{城市}_{LossType}_{iSim}_ogr2ogr.mbtiles`
 
-5. 访问应用:
-   浏览器打开 `http://服务器IP地址` 即可访问应用。
+2. 建筑群损失统计（JSON）
+   - 目录：`CNCityRiskWeb/static/maps/RegionalLossStatistics/{城市}/`
+   - 文件：
+     - `RegionalLossStatistics_DS_Struct.json`
+     - `RegionalLossStatistics_RepairCost_Total.json`
+     - `RegionalLossStatistics_RepairTime.json`
 
-### 更新应用 (使用 DockerHub)
+3. IM 云图数据（HDF5）
+   - 目录：`CNCityRiskWeb/static/maps/IMmap/`
+   - 文件：`IM_mapdata_{城市}.hdf5`
+
+4. 震源信息（CSV）
+   - 目录：`CNCityRiskWeb/static/maps/Ruptures/`
+   - 文件：`{城市}.csv`
+
+5. 年化风险（CSV）
+   - 目录：`CNCityRiskWeb/static/maps/AnnualizedRisk/{城市}/`
+   - 文件：
+     - `mean_annual_freq_mag.csv`
+     - `mean_annual_freq_RepairCost_Total.csv`
+     - `mean_annual_freq_RepairTime.csv`
+     - `mean_annual_loss_with_year_RepairCost_Total.csv`
+     - `mean_annual_loss_with_year_RepairTime.csv`
+
+## 部署
+
+### 服务器部署
+
+1. 在服务器上克隆代码:
+
+    ```bash
+    git clone https://github.com/youtian95/CNCityRisk-web.git CNCityRisk
+    cd CNCityRisk
+    ```
+
+1. 上传 maps 数据到服务器目录（代码仓库默认不包含 maps 大文件）:
+
+    ```bash
+    # 目标目录
+    CNCityRiskWeb/static/maps/
+    ```
+
+1. 在服务器本地构建并启动:
+
+    ```bash
+    docker compose up -d --build
+    ```
+
+1. 1Panel 配置反向代理
+   1. 创建网站
+   2. 反向代理
+      - 域名：`cncityrisk.youtian95.cn`
+      - 代理地址：`http://容器ip:8000`
+   3. 添加反向代理缓存，前端请求路径 `/tiles`
+
+### 更新应用
 
 当应用需要更新时:
 
 ```bash
 # 在服务器上
-cd CNCityRisk-web
-docker-compose down
-docker-compose pull
-docker-compose up -d
+cd CNCityRisk
+git pull
+docker compose down
+docker compose up -d --build
 ```
 
 ### 停止应用
 
 ```bash
-docker-compose down
+docker compose down
 ```
-
----
-
-## 本地开发
-
-### 启动开发服务器
-
-  ```bash
-  flask run
-  ```
-
-### 本地运行容器
-
-```bash
-docker-compose up
-```
-
-### 上传镜像到 DockerHub
-
-```bash
-# 构建并标记 Flask 应用镜像
-docker build -t youtian95/cncityrisk:latest .
-docker tag youtian95/cncityrisk:latest youtian95/cncityrisk:0.3.2
-
-# 构建并标记自定义 Nginx 镜像
-docker build -f Dockerfile.nginx -t youtian95/cncityrisk-nginx:latest .
-docker tag youtian95/cncityrisk-nginx:latest youtian95/cncityrisk-nginx:0.3.2
-
-# 推送到 DockerHub（应用 + Nginx）
-docker push youtian95/cncityrisk:latest
-docker push youtian95/cncityrisk:0.3.2
-docker push youtian95/cncityrisk-nginx:latest
-docker push youtian95/cncityrisk-nginx:0.3.2
-```
-
-

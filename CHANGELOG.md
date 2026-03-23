@@ -1,23 +1,24 @@
 # Changelog
 
-本项目的所有版本变更会记录在此文件中。
-
-格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 规范，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/) (语义化版本)。
-
 ## [Unreleased]
-### Added
-- 其他城市分析结果
 
-### Changed
-- （预留）
+### 修改
 
-### Fixed
-- （预留）
+- [ ] 其他城市分析结果
+- [ ] 年均倒塌...
+
+## [0.4.0]
+
+### 修改
+
+- [x] 不再依赖于`cncityrisk`，直接使用静态数据
+- [x] 不需要安装`GDAL`，优化`dockerfile`，减少镜像体积
+- [x] 不需要`Nginx`，直接使用`1panel`反向代理
+- [x] 清理依赖
+- [x] 不使用`Dockerhub`，直接在服务器上构建镜像
 
 ## [0.3.2] - 2025-09-24
-### Added
+
+### 修改
+
 - 初始公开版本，包含重庆、武汉、合肥
-
-### Known Issues
-- 缺少统一的版本发布流程说明
-

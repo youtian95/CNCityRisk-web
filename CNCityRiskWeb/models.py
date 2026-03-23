@@ -1,13 +1,8 @@
-import CNCityRisk.AnnualizedRisk
-import CNCityRisk.EQsources
-import CNCityRisk.Utilities
 from werkzeug.security import generate_password_hash, check_password_hash
-import CNCityRisk
 import addressparser
 import folium
 import os
 from pathlib import Path
-import py7zr
 import re
 import base64
 import sqlite3
@@ -15,43 +10,66 @@ from shapely.geometry import Polygon, MultiPolygon
 import numpy as np
 import pandas as pd
 import json
+from cnmaps.maps import get_adm_names, get_adm_maps
+
+
+STATIC_MAPS_DIR = Path(__file__).parent / 'static' / 'maps'
+REGIONAL_STATS_DIR = STATIC_MAPS_DIR / 'RegionalLossStatistics'
+ANNUALIZED_RISK_DIR = STATIC_MAPS_DIR / 'AnnualizedRisk'
+RUPTURE_DATA_DIR = STATIC_MAPS_DIR / 'Ruptures'
+
+
+def _get_available_cities_from_static_data():
+    if not REGIONAL_STATS_DIR.exists():
+        return []
+    return sorted([d.name for d in REGIONAL_STATS_DIR.iterdir() if d.is_dir()])
+
+
+def _get_default_province(city):
+    try:
+        df = addressparser.transform([city])
+        if '省' in df and len(df['省']) > 0:
+            province = df['省'][0]
+            if isinstance(province, str) and province.strip():
+                return province
+    except Exception:
+        pass
+    return '未知'
 
 def get_city_list():
-    base_path = os.path.join(os.path.dirname(CNCityRisk.__file__), 'Data', 'BldData')
-    cities = [name for name in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, name))]
-    return cities
+    return _get_available_cities_from_static_data()
 
 def get_province(city):
-    df = addressparser.transform([city])
-    return df['省'][0]
+    return _get_default_province(city)
 
 def get_district_list(CityName):
-    base_path = os.path.join(os.path.dirname(CNCityRisk.__file__), 'Data', 'BldData', CityName)
-    districts = [os.path.splitext(name)[0] for name in os.listdir(base_path) if os.path.isfile(os.path.join(base_path, name))]
-    return districts
+    # 使用 cnmaps 获取区县列表，兼容“武汉/武汉市”两种输入
+    province = get_province(CityName)
+    city_candidates = [CityName]
+
+    if not CityName.endswith('市'):
+        city_candidates.append(f'{CityName}市')
+
+    for city_name in city_candidates:
+        try:
+            districts = get_adm_names(
+                province=province if province != '未知' else None,
+                city=city_name,
+                level='区县'
+            )
+            if districts:
+                # 去重并排序，保持前端下拉稳定
+                return sorted(set(districts))
+        except Exception:
+            continue
+
+    # 兜底，避免前端下拉为空
+    return ['全市']
 
 # get rupture map
 def get_map_rupture(CityName: str) -> str:
-    results_dir = CNCityRisk.EQsources.EQ_SOURCES_OUTPUT_DIR / CityName
-    filename = results_dir / 'ruptures.html'
-    if not filename.exists():
-        return None
-    else:
-        with open(filename, 'r') as f:
-            html_content = f.read()
-        return html_content
-
-# get regional seismic loss map
-def get_map_regional_losses(CityName, DistrictName='武昌区', LossType='DS_Struct', i_rup: int = 0, iSim: int = 0, savedir = Path(__file__).parent / 'static' / 'maps'):
-    filename = f'RegionalLoss_{CityName}_{DistrictName}_{LossType}_{i_rup}_{iSim}.html'
-
-    # 从 static/maps/maps.7z 中读取 filename 的文件，并返回其内容
-    zip_path = savedir / 'maps.7z'
-    with py7zr.SevenZipFile(zip_path, mode='r') as archive:
-        if filename in archive.getnames():
-            file_content = archive.read([filename])
-            return file_content[filename].read().decode('utf-8')
     return None
+
         
 def get_EQ_info_from_map(html_content) -> dict:
     # <div>Magnitude: 5.55<br>Strike: 330.0<br>Dip: 45.0<br>Rake: 90.0<br>Depth: 15.0<br>Length: 4.3 km<br>Width: 4.6 km</div>
@@ -70,19 +88,6 @@ def get_EQ_info_from_map(html_content) -> dict:
         }
     return info
 
-
-
-# plot CDF of regional seismic loss
-def get_image_CDF_regional_losses(CityName, LossType='DS_Struct', i_rup = 0, iSim = 0, savedir =  Path(__file__).parent / 'static' / 'maps'):
-    filename = f'CDF_{CityName}_{LossType}_{i_rup}_{iSim}.jpg'
-    # 从 static/maps/maps.7z 中读取 filename 的文件，并返回其二进制内容
-    zip_path = savedir / 'maps.7z'
-    with py7zr.SevenZipFile(zip_path, mode='r') as archive:
-        if filename in archive.getnames():
-            file_content = archive.read([filename])
-            file_content = base64.b64encode(file_content[filename].read()).decode('utf-8')
-            return file_content
-    return None
 
 def get_image_legend(savedir =  Path(__file__).parent / 'static' / 'maps'):
     filename = 'legend_Bld.png'
@@ -136,7 +141,6 @@ def get_EQ_info_from_mbtiles(CityName, LossType='DS_Struct', i_rup=0):
         print(f"Error reading mbtiles metadata: {e}")
         return {}
 
-# 从 CNCityRisk.Data.BldData 文件夹读取城市列表
 city_list = get_city_list()
 Province_City_District = {}
 for city in city_list:
@@ -146,10 +150,143 @@ for city in city_list:
     Province_City_District[province][city] = get_district_list(city)
 
 
+def _build_rupture_polygon(center_lat, center_lon, length_km, width_km, strike_deg, dip_deg):
+    """参考 Calc4CornersEQRupt 的方法计算破裂面四角点。"""
+    half_length = max(length_km, 1.0) / 2.0
+    # 宽度在地表投影为 W * cos(dip)
+    half_width = max(width_km, 0.5) / 2.0 * np.cos(np.radians(dip_deg))
+
+    # 与参考函数一致的走向与倾向单位向量
+    unit_vec_strike = np.array([
+        np.cos(np.radians(-strike_deg + 90.0)),
+        np.sin(np.radians(-strike_deg + 90.0))
+    ])
+    unit_vec_dip = np.array([
+        np.cos(np.radians(-strike_deg)),
+        np.sin(np.radians(-strike_deg))
+    ])
+
+    # 按参考函数顺序给出四角点，并闭合为多边形
+    corners = []
+    for dx, dy in [
+        (-half_length, -half_width),
+        (half_length, -half_width),
+        (half_length, half_width),
+        (-half_length, half_width),
+        (-half_length, -half_width)
+    ]:
+        d_vec = dx * unit_vec_strike + dy * unit_vec_dip
+        d_lon_km = d_vec[0]
+        d_lat_km = d_vec[1]
+
+        # km -> degree (WGS84 局部近似)
+        d_lon = d_lon_km * 1000.0 / max(np.cos(np.radians(center_lat)), 1e-6) / 6371000.0 * 180.0 / np.pi
+        d_lat = d_lat_km * 1000.0 / 6371000.0 * 180.0 / np.pi
+        corners.append([float(center_lat + d_lat), float(center_lon + d_lon)])
+
+    return corners
+
+
+def _get_rupture_file_path(city_name):
+    city_candidates = [city_name]
+    if not city_name.endswith('市'):
+        city_candidates.append(f'{city_name}市')
+
+    for candidate in city_candidates:
+        path = RUPTURE_DATA_DIR / f'{candidate}.csv'
+        if path.exists():
+            return path
+    return None
+
+
+def _normalize_rupture_row(row, default_index):
+    """将 rupture CSV 的一行记录统一为前端需要的结构。"""
+    if row is None:
+        return None
+
+    def _num(name, default=0.0):
+        if name not in row:
+            return float(default)
+        value = row[name]
+        if pd.isna(value):
+            return float(default)
+        try:
+            return float(value)
+        except Exception:
+            return float(default)
+
+    index = int(_num('i_rup', default_index))
+    magnitude = _num('mag', 5.0)
+    strike = _num('strike', 0.0)
+    dip = _num('dip', 90.0)
+    rake = _num('rake', 0.0)
+    depth = _num('centroid_depth', 0.0)
+    center_lat = _num('centroid_lat', 0.0)
+    center_lon = _num('centroid_lon', 0.0)
+
+    if center_lat == 0.0 and center_lon == 0.0:
+        return None
+
+    length_km = _num('length_km', max(4.0, 10 ** (0.5 * magnitude - 1.8)))
+    width_km = _num('width_km', max(3.0, length_km * 0.6))
+    latlon_polygon = _build_rupture_polygon(
+        center_lat=center_lat,
+        center_lon=center_lon,
+        length_km=length_km,
+        width_km=width_km,
+        strike_deg=strike,
+        dip_deg=dip
+    )
+
+    return {
+        'index': index,
+        'latlon_polygon': latlon_polygon,
+        'parameters': {
+            'magnitude': magnitude,
+            'strike': strike,
+            'dip': dip,
+            'rake': rake,
+            'depth': depth,
+            'center_lat': center_lat,
+            'center_lon': center_lon,
+            'rupture_index': index,
+            'width_km': width_km,
+            'length_km': length_km
+        }
+    }
+
+
+def _get_city_polygon_from_cnmaps(city_name):
+    """使用 cnmaps 获取城市边界多边形。"""
+    province = get_province(city_name)
+    city_candidates = [city_name]
+
+    if not city_name.endswith('市'):
+        city_candidates.append(f'{city_name}市')
+
+    for candidate in city_candidates:
+        try:
+            polygon = get_adm_maps(
+                province=province if province != '未知' else None,
+                city=candidate,
+                level='市',
+                record='first',
+                only_polygon=True
+            )
+            if isinstance(polygon, list):
+                polygon = polygon[0] if polygon else None
+            if polygon is not None and not polygon.is_empty:
+                return polygon
+        except Exception:
+            continue
+
+    return None
+
+
 def get_city_coordinates(city_name=None):
     """
     获取城市的地理坐标数据
-    使用 CNCityRisk.Utilities.get_city_polygon 函数获取真实的城市边界数据
+    纯展示模式下基于 cnmaps 行政边界数据构造城市多边形
     
     Args:
         city_name (str, optional): 指定城市名称。如果为None，返回所有城市的坐标数据
@@ -159,59 +296,27 @@ def get_city_coordinates(city_name=None):
             - 如果指定了city_name，返回 {city_name: {center, bounds, coordinates}}
             - 如果city_name为None，返回 {city1: {center, bounds, coordinates}, city2: {...}, ...}
     """
-    try:
-        city_coordinates = {}
-        
-        # 如果指定了城市名，只获取该城市的数据
-        if city_name:
-            # 检查城市是否存在
-            city_exists = False
-            for province, cities in Province_City_District.items():
-                if city_name in cities.keys():
-                    city_exists = True
-                    break
-            
-            if not city_exists:
-                print(f"City '{city_name}' not found in available cities")
-                return {}
-            
-            try:
-                # 调用CNCityRisk.Utilities.get_city_polygon函数
-                polygon = CNCityRisk.Utilities.get_city_polygon(city_name)
-                if polygon:
-                    # 处理Shapely几何对象
-                    city_data = convert_shapely_to_leaflet_format(polygon)
-                    if city_data:
-                        city_coordinates[city_name] = city_data
-                    else:
-                        print(f"Failed to convert polygon data for {city_name}")
-                else:
-                    print(f"No polygon data found for {city_name}")
-            except Exception as e:
-                print(f"Error getting polygon for {city_name}: {e}")
-                return {}
-        else:
-            # 获取所有可用城市
-            for province, cities in Province_City_District.items():
-                for city in cities.keys():
-                    try:
-                        # 调用CNCityRisk.Utilities.get_city_polygon函数
-                        polygon = CNCityRisk.Utilities.get_city_polygon(city)
-                        if polygon:
-                            # 处理Shapely几何对象
-                            city_data = convert_shapely_to_leaflet_format(polygon)
-                            if city_data:
-                                city_coordinates[city] = city_data
-                    except Exception as e:
-                        print(f"Error getting polygon for {city}: {e}")
-                        continue
-        
-        return city_coordinates
-        
-    except Exception as e:
-        print(f"Error using CNCityRisk.Utilities.get_city_polygon: {e}")
-    
-    return {}
+    city_coordinates = {}
+
+    if city_name:
+        candidate_cities = [city_name]
+    else:
+        candidate_cities = []
+        for _, cities in Province_City_District.items():
+            candidate_cities.extend(cities.keys())
+
+    for city in candidate_cities:
+        polygon = _get_city_polygon_from_cnmaps(city)
+        if not polygon:
+            continue
+
+        city_data = convert_shapely_to_leaflet_format(polygon)
+        if not city_data:
+            continue
+
+        city_coordinates[city] = city_data
+
+    return city_coordinates
 
 def convert_shapely_to_leaflet_format(polygon):
     """
@@ -284,52 +389,23 @@ def get_city_all_ruptures_for_map(city_name):
         list: 包含所有震源多边形和信息的列表
     """
     try:
-        # 调用CNCityRisk.EQsources.ReadCityRuptures函数
-        ruptures_df = CNCityRisk.EQsources.ReadCityRuptures(city_name)
-        
-        if ruptures_df is None or len(ruptures_df) == 0:
+        rupture_file = _get_rupture_file_path(city_name)
+        if not rupture_file:
             return []
-        
+
+        rupture_df = pd.read_csv(rupture_file)
+        if rupture_df.empty:
+            return []
+
         ruptures_for_map = []
-        
-        for index, rupture_series in ruptures_df.iterrows():
-            try:
-                # 调用Create_a_Rupture_Polygon函数获取多边形
-                _, latlon_polygon = CNCityRisk.EQsources.Create_a_Rupture_Polygon(
-                    m=None,
-                    rupture=rupture_series
-                )
-                
-                # 准备震源信息
-                rupture_info = {
-                    'index': index,
-                    'latlon_polygon': latlon_polygon,
-                    'parameters': {
-                        'magnitude': float(rupture_series['mag']),
-                        'strike': float(rupture_series['strike']),
-                        'dip': float(rupture_series['dip']),
-                        'rake': float(rupture_series['rake']),
-                        'depth': float(rupture_series['centroid_depth']),
-                        'center_lat': float(rupture_series['centroid_lat']),
-                        'center_lon': float(rupture_series['centroid_lon']),
-                        'rupture_index': index
-                    }
-                }
-                
-                # 如果有宽度和长度信息，也包含进来
-                if 'W_km' in rupture_series:
-                    rupture_info['parameters']['width_km'] = float(rupture_series['W_km'])
-                if 'length_km' in rupture_series:
-                    rupture_info['parameters']['length_km'] = float(rupture_series['length_km'])
-                
+
+        for i, (_, row) in enumerate(rupture_df.iterrows()):
+            rupture_info = _normalize_rupture_row(row, default_index=i)
+            if rupture_info:
                 ruptures_for_map.append(rupture_info)
-                
-            except Exception as e:
-                print(f"Error processing rupture {index}: {e}")
-                continue
-        
+
         return ruptures_for_map
-        
+
     except Exception as e:
         print(f"Error getting all ruptures for {city_name}: {e}")
         return []
@@ -355,8 +431,8 @@ def get_whole_city_annualized_loss(city_name):
         如果没有找到相关数据，返回 None
     """
     try:
-        # 构建年均损失数据文件夹路径
-        annualized_loss_dir = Path(CNCityRisk.AnnualizedRisk.RESULTDIR) / city_name
+        # 构建年均损失数据文件夹路径（静态展示数据）
+        annualized_loss_dir = ANNUALIZED_RISK_DIR / city_name
 
         if not annualized_loss_dir.exists():
             return None

@@ -1,26 +1,18 @@
 services:
   flask:
-    image: youtian95/cncityrisk:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cncityrisk:local
     restart: always
+    ports:
+      - "8000:8000"
     networks:
       - app-network
     environment:
       - FLASK_ENV=production
       - FLASK_DEBUG=False
       - PYTHONUNBUFFERED=1
-  
-  nginx:
-    build:
-      context: .
-      dockerfile: Dockerfile.nginx
-    image: youtian95/cncityrisk-nginx:latest
-    restart: always
-    ports:
-      - "80:80"
-    depends_on:
-      - flask
-    networks:
-      - app-network
 
 networks:
   app-network:

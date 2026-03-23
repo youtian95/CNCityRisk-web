@@ -1,22 +1,11 @@
-FROM continuumio/miniconda3:latest
+FROM python:3.11-slim
 
 # 设置工作目录
 WORKDIR /app
 
-# 创建conda环境并安装特定版本的GDAL依赖
-RUN conda create -n cncityriskweb python=3.12 -y
-
-# 复制依赖文件（注意检查 requirements.txt 编码为 UTF-8）
-COPY requirements.txt .
-COPY cncityrisk-0.3.2-py3-none-any.whl .
-RUN grep -v "GDAL" requirements.txt > requirements_no_gdal.txt
-
 # 安装Python依赖
-RUN conda run -n cncityriskweb pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-RUN conda install -n cncityriskweb -c conda-forge gdal=3.11.0 python=3.12 -y \
-    && conda run -n cncityriskweb pip install cncityrisk-0.3.2-py3-none-any.whl \
-    && conda run -n cncityriskweb pip install -r requirements_no_gdal.txt \
-    && conda run -n cncityriskweb pip install gunicorn
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+RUN pip install --no-cache-dir cnmaps==1.0.1 cartopy folium addressparser flask flask_compress gunicorn ijson h5py python-dotenv
 
 # 复制应用程序代码
 COPY . .
@@ -25,4 +14,4 @@ COPY . .
 EXPOSE 8000
 
 # 运行应用程序
-CMD ["conda", "run", "-n", "cncityriskweb", "gunicorn", "--config", "gunicorn.conf.py", "wsgi:app"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "wsgi:app"]
