@@ -79,7 +79,7 @@ def get_map_data():
         return jsonify({'error': 'MBTiles文件不存在！'}), 404
         
     encoded_city = quote(current_city)
-    tile_url = f"{request.url_root}tiles/{encoded_city}/{LossType}/{{z}}/{{x}}/{{y}}.pbf"
+    tile_url = f"/tiles/{encoded_city}/{LossType}/{{z}}/{{x}}/{{y}}.pbf"
     
     # 获取MBTiles边界信息
     bounds = None

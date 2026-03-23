@@ -1,9 +1,9 @@
 # CNCityRisk-web
 
 CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序，使用 Flask 框架构建。
-
-网站地址：[http://cncityrisk.youtian95.cn/](http://cncityrisk.youtian95.cn/)
-CHANGELOG: [CHANGELOG.md](CHANGELOG.md)
+  
+- 网站地址：[https://cncityrisk.youtian95.cn/](http://cncityrisk.youtian95.cn/)
+- CHANGELOG: [CHANGELOG.md](CHANGELOG.md)
 
 [![BldLoss](CNCityRiskWeb/static/images/BldLoss.png)](http://cncityrisk.youtian95.cn/)
 
@@ -86,7 +86,12 @@ CHANGELOG: [CHANGELOG.md](CHANGELOG.md)
    2. 反向代理
       - 域名：`cncityrisk.youtian95.cn`
       - 代理地址：`http://容器ip:8000`
-   3. 添加反向代理缓存，前端请求路径 `/tiles`
+   3. 添加安全证书
+   4. 开启反向代理缓存（提高地图加载速度）
+      - 路径 `/tiles/*`：缓存 7 天
+      - 路径 `/get_city_coordinates*`：缓存 1 小时
+      - 路径 `/get_city_all_ruptures/*`：缓存 1 小时
+      - 路径 `/get_map_data*`：缓存 5 分钟
 
 ### 更新应用
 
