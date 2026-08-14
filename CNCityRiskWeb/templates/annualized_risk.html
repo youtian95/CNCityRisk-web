@@ -189,7 +189,7 @@
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="max-repair-cost">-</div>
-                <div class="stat-label">最大修复成本 (万元)</div>
+                <div class="stat-label">最大修复成本 (万 $)</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value" id="max-repair-time">-</div>
@@ -390,7 +390,7 @@ function createRepairCostChart() {
             maintainAspectRatio: false,
             scales: {
                 x: {
-                    title: { display: true, text: '修复成本 (万元)' },
+                    title: { display: true, text: '修复成本 (万 $)' },
                     grid: { color: 'rgba(0,0,0,0.1)' }
                 },
                 y: {
@@ -452,7 +452,7 @@ function createAnnualLossChart() {
         data: {
             labels: annualizedData.annual_loss_RepairCost_Total.Year,
             datasets: [{
-                label: '修复成本 (万元)',
+                label: '修复成本 (万 $)',
                 data: annualizedData.annual_loss_RepairCost_Total.MeanAnnualLoss.map(x => x/10000),
                 borderColor: '#667eea',
                 backgroundColor: 'rgba(102, 126, 234, 0.1)',
@@ -479,7 +479,7 @@ function createAnnualLossChart() {
                     type: 'linear',
                     display: true,
                     position: 'left',
-                    title: { display: true, text: '年均修复成本 (万元)' },
+                    title: { display: true, text: '年均修复成本 (万 $)' },
                     grid: { color: 'rgba(0,0,0,0.1)' }
                 },
                 y1: {

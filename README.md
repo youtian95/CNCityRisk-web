@@ -15,7 +15,7 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
   python -m flask run
   ```
 
-  然后访问 [http://localhost:8000/](http://localhost:8000/) 。
+  然后访问 [http://localhost:5000/](http://localhost:5000/) 。
 
 ### 本地运行容器
 
@@ -88,10 +88,6 @@ CNCityRisk-web 是一个用于展示城市风险评估结果的 Web 应用程序
       - 代理地址：`http://容器ip:8000`
    3. 添加安全证书
    4. 开启反向代理缓存（提高地图加载速度）
-      - 路径 `/tiles/*`：缓存 7 天
-      - 路径 `/get_city_coordinates*`：缓存 1 小时
-      - 路径 `/get_city_all_ruptures/*`：缓存 1 小时
-      - 路径 `/get_map_data*`：缓存 5 分钟
 
 ### 更新应用
 

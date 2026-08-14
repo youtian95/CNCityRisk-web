@@ -217,27 +217,7 @@
     <div id="map" class="map"></div>        
     <!-- 图例 -->
     <div class="map-legend">
-        <h4 style="margin: 0 0 10px 0;">损失等级</h4>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: rgba(0, 100, 255, 0.9);"></div>
-            <span>0 - 无损失</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: rgba(255, 237, 160, 1.0);"></div>
-            <span>1 - 轻微损失</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: rgba(254, 217, 118, 1.0);"></div>
-            <span>2 - 中等损失</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: rgba(253, 141, 60, 1.0);"></div>
-            <span>3 - 严重损失</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-color" style="background-color: rgba(240, 59, 32, 1.0);"></div>
-            <span>4 - 完全损失</span>
-        </div>
+        <div id="lossLegend"></div>
         <h4 style="margin: 15px 0 10px 0;">IM强度等值线</h4>
         <div style="width: 150px; height: 20px; background: linear-gradient(to right, 
             rgba(255, 255, 255, 0.02) 0%,
@@ -275,9 +255,9 @@
                     <label for="LossType">损失类型:</label>
                     <select id="LossType" name="LossType">
                         <option value="DS_Struct" {% if LossType == 'DS_Struct' %}selected{% endif %}>结构损失</option>
-                        <option value="DS_NonStruct" {% if LossType == 'DS_NonStruct' %}selected{% endif %}>非结构损失</option>
-                        <option value="DS_Content" {% if LossType == 'DS_Content' %}selected{% endif %}>内容损失</option>                      
-                        </select>
+                        <option value="RepairCost_Total" {% if LossType == 'RepairCost_Total' %}selected{% endif %}>总修复成本</option>
+                        <option value="RepairTime" {% if LossType == 'RepairTime' %}selected{% endif %}>修复时间</option>
+                    </select>
                     <br>
                     <label for="period_index">IM周期:</label>
                     <select id="period_index" name="period_index">
@@ -318,6 +298,28 @@ let currentRupture = parseInt('{{ eq_i_rup }}' || '0');
 let currentISim = parseInt('{{ iSim|default(0) }}');
 let currentPeriodIndex = 0; // 默认使用周期索引0
 let imMetadata = null; // 存储IM元数据
+
+// 不同损失类型的分级颜色，连续损失的阈值分别采用 $ 和天
+const lossColors = [
+    ['rgba(0, 100, 255, 0.7)', 'rgba(0, 100, 255, 1.0)'],
+    ['rgba(255, 237, 160, 1.0)', '#e6d000'],
+    ['rgba(254, 217, 118, 1.0)', '#ff9900'],
+    ['rgba(253, 141, 60, 1.0)', '#ff6600'],
+    ['rgba(240, 59, 32, 1.0)', '#cc0000']
+];
+
+const continuousLossConfigs = {
+    RepairCost_Total: {
+        title: '总修复成本（万 $）',
+        thresholds: [0, 10000, 100000, 1000000],
+        labels: ['0 - 无损失', '0 < 成本 ≤ 1', '1 < 成本 ≤ 10', '10 < 成本 ≤ 100', '成本 > 100']
+    },
+    RepairTime: {
+        title: '修复时间（天）',
+        thresholds: [0, 7, 30, 90],
+        labels: ['0 - 无损失', '0 < 时间 ≤ 7', '7 < 时间 ≤ 30', '30 < 时间 ≤ 90', '时间 > 90']
+    }
+};
 
 // 使用地理坐标系（经纬度）
 ol.proj.useGeographic();
@@ -470,6 +472,39 @@ function updateCurrentPeriodDisplay() {
     }
 }
 
+// 从瓦片属性的“(数量:值1,值2,...)”格式中提取当前震源的损失值
+function parseLossValue(rawValue) {
+    let lossValue = rawValue;
+    if (typeof lossValue === 'string' && lossValue.startsWith('(') && lossValue.includes(':')) {
+        const content = lossValue.slice(1, -1);
+        const separatorIndex = content.indexOf(':');
+        const values = content.slice(separatorIndex + 1).split(',').map(value => Number.parseFloat(value.trim()));
+        lossValue = currentRupture < values.length ? values[currentRupture] : values[0];
+    }
+
+    // 转为当前震源对应的数字，例如损伤等级 3、修复成本 $12,345.67 或修复时间 30.5 天
+    const parsedValue = Number(lossValue);
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+}
+
+// 根据当前损失类型刷新地图图例
+function updateLossLegend() {
+    const lossType = document.getElementById('LossType').value;
+    const legend = document.getElementById('lossLegend');
+    const continuousConfig = continuousLossConfigs[lossType];
+    const title = continuousConfig ? continuousConfig.title : '损失等级';
+    const labels = continuousConfig
+        ? continuousConfig.labels
+        : ['0 - 无损失', '1 - 轻微损失', '2 - 中等损失', '3 - 严重损失', '4 - 完全损失'];
+
+    legend.innerHTML = `<h4 style="margin: 0 0 10px 0;">${title}</h4>` + labels.map((label, index) => `
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: ${lossColors[index][0]};"></div>
+            <span>${label}</span>
+        </div>
+    `).join('');
+}
+
 // 处理地图点击事件
 function handleMapClick(evt) {
     const feature = map.forEachFeatureAtPixel(evt.pixel, function(feature) {
@@ -502,25 +537,22 @@ function showBuildingPopup(coordinate, properties) {
         existingPopup.remove();
     }
     
-    // 处理loss_value - 解析特殊格式 (35:0,0,0,0,1,0,...)
-    let displayLossValue = properties.loss_value;
-    try {
-        if (typeof displayLossValue === 'string' && displayLossValue.startsWith('(') && displayLossValue.includes(':')) {
-            const content = displayLossValue.slice(1, -1);
-            const parts = content.split(':');
-            if (parts.length === 2) {
-                const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
-                displayLossValue = currentRupture < valuesArray.length ? valuesArray[currentRupture] : valuesArray[0];
-            }
-        }
-    } catch (e) {
-        // 解析失败，使用原值
+    const lossType = document.getElementById('LossType').value;
+    const displayLossValue = parseLossValue(properties.loss_value);
+    let lossLabel = '损失等级';
+    let formattedLossValue = displayLossValue ?? '无数据';
+    if (lossType === 'RepairCost_Total' && displayLossValue !== null) {
+        lossLabel = '总修复成本';
+        formattedLossValue = `$${displayLossValue.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
+    } else if (lossType === 'RepairTime' && displayLossValue !== null) {
+        lossLabel = '修复时间';
+        formattedLossValue = `${displayLossValue.toLocaleString('zh-CN', { maximumFractionDigits: 2 })} 天`;
     }
     
     // 创建弹窗内容
     let popupContent = '<div style="background: white; padding: 10px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); min-width: 200px;"><strong>建筑物损失信息</strong><br>';
     if (properties.id) popupContent += `<strong>ID:</strong> ${properties.id}<br>`;
-    popupContent += `<strong>损失等级:</strong> ${displayLossValue}<br>`;
+    popupContent += `<strong>${lossLabel}:</strong> ${formattedLossValue}<br>`;
     if (properties.structure) popupContent += `<strong>结构类型:</strong> ${properties.structure}<br>`;
     if (properties.story) popupContent += `<strong>楼层数:</strong> ${properties.story}<br>`;
     if (properties.DistrictName) popupContent += `<strong>区域:</strong> ${properties.DistrictName}<br>`;
@@ -638,44 +670,21 @@ function addVectorTileLayer(tileUrl, bounds) {
         try {
             const properties = feature.getProperties();
             
-            let lossValue = properties.loss_value;
-            if (typeof lossValue === 'string' && lossValue.startsWith('(') && lossValue.includes(':')) {
-                const content = lossValue.slice(1, -1);
-                const parts = content.split(':');
-                if (parts.length === 2) {
-                    const valuesArray = parts[1].split(',').map(v => parseInt(v.trim()));
-                    lossValue = currentRupture < valuesArray.length ? valuesArray[currentRupture] : valuesArray[0];
-                }
+            const lossNum = parseLossValue(properties.loss_value);
+            const lossType = document.getElementById('LossType').value;
+            const continuousConfig = continuousLossConfigs[lossType];
+            let colorIndex;
+
+            if (lossNum === null) {
+                return null;
+            } else if (continuousConfig) {
+                colorIndex = continuousConfig.thresholds.findIndex(threshold => lossNum <= threshold);
+                colorIndex = colorIndex === -1 ? lossColors.length - 1 : colorIndex;
+            } else {
+                colorIndex = Number.isInteger(lossNum) && lossNum >= 0 && lossNum < lossColors.length ? lossNum : 0;
             }
-            
-            let fillColor, strokeColor;
-            const lossNum = Number(lossValue);
-            
-            switch(lossNum) {
-                case 0: 
-                    fillColor = 'rgba(0, 100, 255, 0.7)';
-                    strokeColor = 'rgba(0, 100, 255, 1.0)';
-                    break;  
-                case 1: 
-                    fillColor = 'rgba(255, 237, 160, 1.0)';
-                    strokeColor = '#e6d000';
-                    break;  
-                case 2: 
-                    fillColor = 'rgba(254, 217, 118, 1.0)';
-                    strokeColor = '#ff9900';
-                    break;  
-                case 3: 
-                    fillColor = 'rgba(253, 141, 60, 1.0)';
-                    strokeColor = '#ff6600';
-                    break;  
-                case 4: 
-                    fillColor = 'rgba(240, 59, 32, 1.0)';
-                    strokeColor = '#cc0000';
-                    break;  
-                default: 
-                    fillColor = 'rgba(255, 0, 255, 0.9)';
-                    strokeColor = '#ff00ff';
-            }
+
+            const [fillColor, strokeColor] = lossColors[colorIndex];
             
             return new ol.style.Style({
                 fill: new ol.style.Fill({
@@ -752,6 +761,7 @@ async function updateMap() {
         currentRupture = newRupture;
     }
     // 重新加载建筑群数据
+    updateLossLegend();
     loadMapData();
     
     // 更新周期显示
@@ -813,6 +823,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    const lossTypeSelect = document.getElementById('LossType');
+    lossTypeSelect.addEventListener('change', updateLossLegend);
+    updateLossLegend();
     
     initMap();
 });
